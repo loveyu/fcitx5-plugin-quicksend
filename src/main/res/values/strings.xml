@@ -27,7 +27,11 @@
 
     <!-- 悬浮窗 -->
     <string name="overlay_enable">启用悬浮发送按钮</string>
-    <string name="overlay_permission_rationale">需要“���示在其他应用上层”权限才能显示悬浮按钮，正在跳转授权…</string>
+    <string name="overlay_enabled_hint">已启用，输入法弹出时显示悬浮按钮</string>
+    <string name="overlay_disabled_hint">已关闭悬浮发送按钮</string>
+    <string name="overlay_list_title">快捷发送</string>
+    <string name="overlay_close">关闭</string>
+    <string name="overlay_permission_rationale">需要“显示在其他应用上层”权限才能显示悬浮按钮，正在跳转授权…</string>
     <string name="send_mode">发送模式</string>
     <string name="mode_combination">一起发送（组合键）</string>
     <string name="mode_sequence">单个发送（序列）</string>

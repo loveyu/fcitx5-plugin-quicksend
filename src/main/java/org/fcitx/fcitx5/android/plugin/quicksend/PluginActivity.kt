@@ -62,6 +62,11 @@ class PluginActivity : Activity() {
             } else {
                 prefs.edit().putBoolean(KEY_OVERLAY, checked).apply()
                 toggleOverlay(checked)
+                Toast.makeText(
+                    this,
+                    if (checked) R.string.overlay_enabled_hint else R.string.overlay_disabled_hint,
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
 
