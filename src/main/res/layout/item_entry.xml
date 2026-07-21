@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="10dp">
+
+    <TextView
+        android:id="@+id/entry_content"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="#212121"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/entry_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textColor="#1976D2"
+        android:textSize="13sp"
+        android:contentDescription="@string/mode_combination_desc" />
+
+    <TextView
+        android:id="@+id/entry_use_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:textColor="#9E9E9E"
+        android:textSize="12sp" />
+
+    <Button
+        android:id="@+id/entry_edit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:paddingHorizontal="8dp"
+        android:text="@string/edit_entry_edit"
+        android:textSize="12sp"
+        style="?android:attr/borderlessButtonStyle" />
+
+    <Button
+        android:id="@+id/entry_delete"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:paddingHorizontal="8dp"
+        android:text="@string/delete_entry"
+        android:textColor="#D32F2F"
+        android:textSize="12sp"
+        style="?android:attr/borderlessButtonStyle" />
+
+</LinearLayout>

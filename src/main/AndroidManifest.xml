@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 绑定 FcitxRemoteService（protectionLevel="signature"）：
+         仅当本插件与 fcitx5-android 共享同一签名证书时生效
+         （调试构建双方均使用标准 Android debug keystore 即可）。 -->
+    <uses-permission android:name="${fcitxAppId}.permission.IPC" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <application
+        android:name="org.fcitx.fcitx5.android.plugin.quicksend.PluginApplication"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.DeviceDefault.Light">
+
+        <meta-data
+            android:name="org.fcitx.fcitx5.android.plugin"
+            android:resource="@xml/plugin" />
+
+        <activity
+            android:name="org.fcitx.fcitx5.android.plugin.quicksend.PluginActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="${fcitxAppId}.plugin.MANIFEST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name="org.fcitx.fcitx5.android.plugin.quicksend.MainService"
+            android:exported="true"
+            android:permission="${fcitxAppId}.permission.PLUGIN">
+            <intent-filter>
+                <action android:name="${fcitxAppId}.plugin.SERVICE" />
+            </intent-filter>
+        </service>
+
+        <service android:name="org.fcitx.fcitx5.android.plugin.quicksend.QuickSendOverlayService" />
+
+    </application>
+
+</manifest>
