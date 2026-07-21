@@ -286,7 +286,10 @@ class QuickSendOverlayService : android.app.Service() {
     }
 
     private fun sendEntry(entry: QuickSendEntry) {
-        scope.launch { withContext(Dispatchers.IO) { QuickSendExecutor.execute(entry) } }
+        // 用悬浮窗自身已建立的连接发送，不依赖输入法主动绑定插件 MainService
+        // （更新插件后输入法未重连时，RemoteServiceHolder 可能为空，但本连接仍可用）。
+        val remote = remoteService
+        scope.launch { withContext(Dispatchers.IO) { QuickSendExecutor.execute(entry, remote) } }
         hideList()
     }
 

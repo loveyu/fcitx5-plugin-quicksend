@@ -2,6 +2,7 @@ package org.fcitx.fcitx5.android.plugin.quicksend
 
 import android.util.Log
 import android.view.KeyEvent
+import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
 import org.fcitx.fcitx5.android.plugin.quicksend.data.QuickSendManager
 import org.fcitx.fcitx5.android.plugin.quicksend.data.SendAction
 import org.fcitx.fcitx5.android.plugin.quicksend.data.SendActionBuilder
@@ -10,18 +11,28 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 private const val TAG = "QuickSendExecutor"
 
 /**
- * 执行快捷发送：将条目段合并为 [SendAction] 序列，通过 [RemoteServiceHolder]
+ * 执行快捷发送：将条目段合并为 [SendAction] 序列，通过 [IQuickSendService]
  * 调用 fcitx5-android 主程序的发送能力，并自增使用计数。
+ *
+ * 连接来源：���认取 [RemoteServiceHolder.service]（由 MainService 反向绑定填入）；
+ * 调用方（如悬浮窗）也可显式传入自己已建立的连接，避免依赖输入法主动加载插件。
  *
  * ⚠️ 发送依赖主项目 [IQuickSendService] 提供 commitText / sendKeyDownUpKey /
  * sendKeyCombination。主项目未实现时，远程调用会失败。
  */
 object QuickSendExecutor {
 
-    /** 执行一条快捷发送。返回是否成功送达主程序。 */
-    suspend fun execute(entry: QuickSendEntry): Boolean {
+    /**
+     * 执行一条快捷发送。返回是否成功送达主程序。
+     *
+     * @param service 显式传入的连接（如悬浮窗自身绑定）；为空则回退到 [RemoteServiceHolder]。
+     */
+    suspend fun execute(
+        entry: QuickSendEntry,
+        service: IQuickSendService? = RemoteServiceHolder.service
+    ): Boolean {
         val actions = SendActionBuilder.build(entry.segments, entry.sendMode)
-        val ok = executeActions(actions)
+        val ok = executeActions(actions, service ?: RemoteServiceHolder.service)
         if (ok) {
             QuickSendManager.incrementUse(entry.id)
         } else {
@@ -30,8 +41,8 @@ object QuickSendExecutor {
         return ok
     }
 
-    private fun executeActions(actions: List<SendAction>): Boolean {
-        val remote = RemoteServiceHolder.service ?: run {
+    private fun executeActions(actions: List<SendAction>, remote: IQuickSendService?): Boolean {
+        if (remote == null) {
             Log.w(TAG, "Remote service not connected")
             return false
         }
