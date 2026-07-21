@@ -18,7 +18,8 @@
 
         <activity
             android:name="org.fcitx.fcitx5.android.plugin.quicksend.PluginActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.QuickSend">
             <intent-filter>
                 <action android:name="${fcitxAppId}.plugin.MANIFEST" />
                 <category android:name="android.intent.category.DEFAULT" />

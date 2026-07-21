@@ -121,6 +121,24 @@ object KeyNameMapping {
         return null
     }
 
+    /**
+     * 单个字符 → KEYCODE（布局无关、确定性映射）。
+     *
+     * 用于把组合键里的纯文本主键（如 `[CTRL]c` 中的 `c`）提升为真正的按键，
+     * 否则 `c` 会被当成普通文本提交、`CTRL` 变成裸按一次，组合键无法成立。
+     * 仅映射布局无关的按键（字母/数字/空格/回车/制表符）；其余字符返回 null，
+     * 保持按文本处理。
+     */
+    fun keyCodeOfChar(c: Char): Int? = when (c) {
+        in 'a'..'z' -> KeyEvent.KEYCODE_A + (c - 'a')
+        in 'A'..'Z' -> KeyEvent.KEYCODE_A + (c - 'A')
+        in '0'..'9' -> KeyEvent.KEYCODE_0 + (c - '0')
+        ' ' -> KeyEvent.KEYCODE_SPACE
+        '\n' -> KeyEvent.KEYCODE_ENTER
+        '\t' -> KeyEvent.KEYCODE_TAB
+        else -> null
+    }
+
     fun isModifier(name: String): Boolean = name.uppercase() in modifierKeys
 
     fun isValidKey(name: String): Boolean = keyCodeOf(name) != null

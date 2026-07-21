@@ -34,27 +34,39 @@ object SendActionBuilder {
      * COMBINATION 模式：
      * - 连续 modifier type=1 段合为修饰键列表
      * - 首个非 modifier type=1 段作主键
+     * - 已有修饰键时，首个“单字符” type=0 段也提升为主键（如 `[CTRL]c` → Ctrl+C），
+     *   否则该字符会被当成普通文本提交、修饰键沦为裸按一次，组合键不成立
      * - 后续 type=1 段回退为单个 KeyPress
-     * - 所有 type=0 段合并为一个 Text（放在最后）
+     * - 其余 type=0 段合并为一个 Text（放在最后）
      */
     fun buildCombination(segments: List<ContentSegment>): List<SendAction> {
         val trailingKeyPresses = mutableListOf<SendAction>()
         val modifiers = mutableListOf<Int>()
         var mainKey: Int? = null
-
-        for (seg in segments) {
-            if (seg.type != ContentSegment.TYPE_KEY) continue
-            val code = KeyNameMapping.keyCodeOf(seg.content) ?: continue // 不在映射表，跳过
-            when {
-                mainKey == null && KeyNameMapping.isModifier(seg.content) -> modifiers.add(code)
-                mainKey == null -> mainKey = code
-                else -> trailingKeyPresses.add(SendAction.KeyPress(code))
-            }
-        }
-
         val textBuilder = StringBuilder()
+
         for (seg in segments) {
-            if (seg.type == ContentSegment.TYPE_TEXT) textBuilder.append(seg.content)
+            when {
+                seg.type == ContentSegment.TYPE_KEY -> {
+                    val code = KeyNameMapping.keyCodeOf(seg.content) ?: continue // 不在映射表，跳过
+                    when {
+                        mainKey == null && KeyNameMapping.isModifier(seg.content) -> modifiers.add(code)
+                        mainKey == null -> mainKey = code
+                        else -> trailingKeyPresses.add(SendAction.KeyPress(code))
+                    }
+                }
+                seg.type == ContentSegment.TYPE_TEXT -> {
+                    // 修饰键已就位、尚无主键、且是单个可映射字符 → 提升为主键，避免组合键被拆散
+                    if (mainKey == null && modifiers.isNotEmpty() && seg.content.length == 1) {
+                        val promoted = KeyNameMapping.keyCodeOfChar(seg.content[0])
+                        if (promoted != null) {
+                            mainKey = promoted
+                            continue
+                        }
+                    }
+                    textBuilder.append(seg.content)
+                }
+            }
         }
 
         val actions = mutableListOf<SendAction>()

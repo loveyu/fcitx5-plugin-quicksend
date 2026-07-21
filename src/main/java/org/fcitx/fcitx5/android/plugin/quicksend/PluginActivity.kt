@@ -48,6 +48,8 @@ class PluginActivity : Activity() {
         binding.entriesList.layoutManager = LinearLayoutManager(this)
         binding.entriesList.adapter = adapter
 
+        binding.backButton.setOnClickListener { finish() }
+
         binding.addButton.setOnClickListener { EditEntryDialog.show(this, null) }
 
         // 先恢复开关状态再挂监听，避免初始化触发

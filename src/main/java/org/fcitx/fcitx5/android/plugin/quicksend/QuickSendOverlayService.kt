@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.IBinder
@@ -17,6 +18,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ArrayAdapter
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
@@ -180,7 +182,8 @@ class QuickSendOverlayService : android.app.Service() {
             return
         }
         val lv = ListView(this).apply {
-            divider = null
+            divider = ColorDrawable(Color.parseColor("#EEEEEE"))
+            dividerHeight = dp(1)
             setPadding(dp(6), dp(4), dp(6), dp(8))
         }
         val ad = object : ArrayAdapter<QuickSendEntry>(
@@ -216,6 +219,21 @@ class QuickSendOverlayService : android.app.Service() {
             contentDescription = getString(R.string.overlay_close)
             setOnClickListener { hideList() }
         }
+        val settingsBtn = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_settings)
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            contentDescription = getString(R.string.overlay_open_settings)
+            setOnClickListener {
+                runCatching {
+                    startActivity(
+                        Intent(this@QuickSendOverlayService, PluginActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }
+                hideList()
+            }
+        }
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -224,6 +242,7 @@ class QuickSendOverlayService : android.app.Service() {
                 title,
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT).apply { weight = 1f }
             )
+            addView(settingsBtn)
             addView(closeBtn)
         }
 
