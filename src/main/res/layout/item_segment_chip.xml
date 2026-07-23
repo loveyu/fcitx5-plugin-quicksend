@@ -13,7 +13,7 @@
         android:layout_height="wrap_content"
         android:paddingHorizontal="8dp"
         android:paddingVertical="4dp"
-        android:textColor="#212121"
+        android:textColor="@color/qs_text_primary"
         android:textSize="14sp" />
 
     <TextView
@@ -23,7 +23,7 @@
         android:paddingHorizontal="6dp"
         android:paddingVertical="4dp"
         android:text="×"
-        android:textColor="#D32F2F"
+        android:textColor="@color/qs_danger"
         android:textSize="16sp"
         android:textStyle="bold" />
 

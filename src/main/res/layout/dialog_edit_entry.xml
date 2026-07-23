@@ -13,7 +13,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/label_field"
-            android:textColor="#424242"
+            android:textColor="@color/qs_field_label"
             android:textSize="13sp" />
 
         <EditText
@@ -29,14 +29,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="@string/content_segments"
-            android:textColor="#424242"
+            android:textColor="@color/qs_field_label"
             android:textSize="13sp" />
 
         <org.fcitx.fcitx5.android.plugin.quicksend.ui.FlowLayout
             android:id="@+id/segments_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="#F5F5F5"
+            android:background="@color/qs_segment_bg"
             android:minHeight="48dp"
             android:padding="8dp" />
 
@@ -75,7 +75,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="@string/send_mode"
-            android:textColor="#424242"
+            android:textColor="@color/qs_field_label"
             android:textSize="13sp" />
 
         <RadioGroup
@@ -110,7 +110,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/use_count"
-                android:textColor="#424242"
+                android:textColor="@color/qs_field_label"
                 android:textSize="13sp" />
 
             <EditText

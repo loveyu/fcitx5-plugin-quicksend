@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.View
 import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -33,7 +35,7 @@ class PluginActivity : Activity() {
     private lateinit var adapter: QuickSendAdapter
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
+    private val prefs by lazy { getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,7 +55,7 @@ class PluginActivity : Activity() {
         binding.addButton.setOnClickListener { EditEntryDialog.show(this, null) }
 
         // 先恢复开关状态再挂监听，避免初始化触发
-        binding.overlaySwitch.isChecked = prefs.getBoolean(KEY_OVERLAY, false)
+        binding.overlaySwitch.isChecked = prefs.getBoolean(QuickSendPrefs.OVERLAY_ENABLED, false)
         binding.overlaySwitch.setOnCheckedChangeListener { button, checked ->
             if (checked && !Settings.canDrawOverlays(this)) {
                 button.isChecked = false
@@ -62,7 +64,7 @@ class PluginActivity : Activity() {
                     Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
                 )
             } else {
-                prefs.edit().putBoolean(KEY_OVERLAY, checked).apply()
+                prefs.edit().putBoolean(QuickSendPrefs.OVERLAY_ENABLED, checked).apply()
                 toggleOverlay(checked)
                 Toast.makeText(
                     this,
@@ -72,6 +74,20 @@ class PluginActivity : Activity() {
             }
         }
 
+        // 悬浮按钮文字：自定义悬浮按钮上显示的字符（单个字符观感最佳），输入即时保存。
+        binding.buttonTextInput.setText(
+            prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT)
+        )
+        binding.buttonTextInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                // 留空时落回默认值，保证悬浮按钮总有文字可显示
+                val text = s?.toString().orEmpty().ifBlank { QuickSendPrefs.BUTTON_TEXT_DEFAULT }
+                prefs.edit().putString(QuickSendPrefs.BUTTON_TEXT, text).apply()
+            }
+        })
+
         scope.launch {
             QuickSendManager.items.collect { list -> updateUi(list) }
         }
@@ -80,7 +96,7 @@ class PluginActivity : Activity() {
     override fun onResume() {
         super.onResume()
         // 用户可能刚从系统授权页返回，同步开关
-        if (prefs.getBoolean(KEY_OVERLAY, false) && Settings.canDrawOverlays(this)) {
+        if (prefs.getBoolean(QuickSendPrefs.OVERLAY_ENABLED, false) && Settings.canDrawOverlays(this)) {
             if (!binding.overlaySwitch.isChecked) binding.overlaySwitch.isChecked = true
         }
     }
@@ -125,10 +141,5 @@ class PluginActivity : Activity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
-    }
-
-    companion object {
-        private const val PREFS = "quicksend_prefs"
-        private const val KEY_OVERLAY = "overlay_enabled"
     }
 }

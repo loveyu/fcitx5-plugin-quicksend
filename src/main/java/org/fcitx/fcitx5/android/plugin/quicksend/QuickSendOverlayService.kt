@@ -23,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -135,7 +136,8 @@ class QuickSendOverlayService : android.app.Service() {
         if (buttonView != null) return
         val wm = windowManager ?: return
         val btn = TextView(this).apply {
-            text = "发"
+            text = getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE)
+                .getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT)
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             gravity = Gravity.CENTER
@@ -182,7 +184,7 @@ class QuickSendOverlayService : android.app.Service() {
             return
         }
         val lv = ListView(this).apply {
-            divider = ColorDrawable(Color.parseColor("#EEEEEE"))
+            divider = ColorDrawable(resolveColor(R.color.qs_overlay_divider))
             dividerHeight = dp(1)
             setPadding(dp(6), dp(4), dp(6), dp(8))
         }
@@ -196,6 +198,7 @@ class QuickSendOverlayService : android.app.Service() {
                 getItem(position)?.let { tv.text = SegmentFormatter.displayLabel(it) }
                 tv.setPadding(dp(12), dp(10), dp(12), dp(10))
                 tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                tv.setTextColor(resolveColor(R.color.qs_text_primary))
                 return tv
             }
         }
@@ -207,13 +210,13 @@ class QuickSendOverlayService : android.app.Service() {
 
         val title = TextView(this).apply {
             text = getString(R.string.overlay_list_title)
-            setTextColor(Color.parseColor("#212121"))
+            setTextColor(resolveColor(R.color.qs_text_primary))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
             typeface = Typeface.DEFAULT_BOLD
         }
         val closeBtn = TextView(this).apply {
             text = "✕"
-            setTextColor(Color.parseColor("#616161"))
+            setTextColor(resolveColor(R.color.qs_overlay_close))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setPadding(dp(12), dp(6), dp(10), dp(6))
             contentDescription = getString(R.string.overlay_close)
@@ -249,14 +252,14 @@ class QuickSendOverlayService : android.app.Service() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(0xFFFFFFFF.toInt())
+                setColor(resolveColor(R.color.qs_surface))
                 cornerRadius = dp(12).toFloat()
-                setStroke(1, Color.parseColor("#E0E0E0"))
+                setStroke(1, resolveColor(R.color.qs_divider))
             }
             elevation = dp(6).toFloat()
             addView(header)
             addView(
-                View(this@QuickSendOverlayService).apply { setBackgroundColor(Color.parseColor("#EEEEEE")) },
+                View(this@QuickSendOverlayService).apply { setBackgroundColor(resolveColor(R.color.qs_overlay_divider)) },
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
             )
             addView(
@@ -299,6 +302,10 @@ class QuickSendOverlayService : android.app.Service() {
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    /** 解析语义颜色：随系统深色模式取 values/values-night 对应值。悬浮窗虽是 Service
+     *  上下文，但其资源配置同样反映当前 uiMode，故可正确切换日夜。 */
+    private fun resolveColor(id: Int): Int = ContextCompat.getColor(this, id)
 
     companion object {
         const val ACTION_HIDE = "org.fcitx.fcitx5.android.plugin.quicksend.HIDE"

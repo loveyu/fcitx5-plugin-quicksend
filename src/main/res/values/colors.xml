@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  语义化配色（日间默认值）。所有布局/代码中的硬编码颜色都改引用这里的语义名，
+  以便 values-night/colors.xml 提供夜间对应值后自动随系统深色模式切换。
+  仅与外观相关、不随模式变化的颜色（如悬浮按钮的饱和蓝底）不放入 night 变体。
+-->
+<resources>
+
+    <!-- 页面/卡片底色 -->
+    <color name="qs_background">#FFFFFF</color>
+    <color name="qs_surface">#FFFFFF</color>
+
+    <!-- 文本 -->
+    <color name="qs_text_primary">#212121</color>
+    <color name="qs_text_secondary">#757575</color>
+    <color name="qs_text_hint">#9E9E9E</color>
+    <color name="qs_field_label">#424242</color>
+
+    <!-- 分隔线 / 容器底 -->
+    <color name="qs_divider">#E0E0E0</color>
+    <color name="qs_segment_bg">#F5F5F5</color>
+    <color name="qs_overlay_divider">#EEEEEE</color>
+    <color name="qs_overlay_close">#616161</color>
+
+    <!-- 强调 / 危险 -->
+    <color name="qs_accent">#1976D2</color>
+    <color name="qs_danger">#D32F2F</color>
+
+    <!-- 悬浮按钮：白字配饱和蓝，日夜通用，故无 night 变体 -->
+    <color name="qs_accent_overlay_bg">#E61976D2</color>
+
+    <!-- 特殊键 chip：半透明灰，日夜通用 -->
+    <color name="qs_key_chip_bg">#33808080</color>
+    <color name="qs_key_chip_stroke">#888888</color>
+
+</resources>

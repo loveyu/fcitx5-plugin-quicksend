@@ -2,7 +2,10 @@
 <!--
   设置页主题：去掉系统标题栏（windowActionBar=false / windowNoTitle=true），
   仅保留布局自绘的标题与返回按钮，消除“双标题”。
-  其余沿用 DeviceDefault.Light 观感。
+
+  基类使用 DeviceDefault.Light：API 24-28 无系统深色模式开关，固定浅色即可；
+  API 29+ 由 values-v29/themes.xml 覆盖为 DeviceDefault.DayNight，
+  自动跟随系统深色模式，无需 AppCompat 依赖。
 -->
 <resources>
 

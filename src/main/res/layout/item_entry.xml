@@ -14,7 +14,7 @@
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="2"
-        android:textColor="#212121"
+        android:textColor="@color/qs_text_primary"
         android:textSize="15sp" />
 
     <TextView
@@ -22,7 +22,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
-        android:textColor="#1976D2"
+        android:textColor="@color/qs_accent"
         android:textSize="13sp"
         android:contentDescription="@string/mode_combination_desc" />
 
@@ -31,7 +31,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="10dp"
-        android:textColor="#9E9E9E"
+        android:textColor="@color/qs_text_hint"
         android:textSize="12sp" />
 
     <Button
@@ -53,7 +53,7 @@
         android:minHeight="0dp"
         android:paddingHorizontal="8dp"
         android:text="@string/delete_entry"
-        android:textColor="#D32F2F"
+        android:textColor="@color/qs_danger"
         android:textSize="12sp"
         style="?android:attr/borderlessButtonStyle" />
 

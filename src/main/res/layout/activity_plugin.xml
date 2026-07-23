@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 根布局 fitsSystemWindows=true：自动为状态栏(顶)与导航条(底)留出 padding，
-     避免标题被状态栏盖住、底部按钮被导航条遮挡。 -->
+     避免标题被状态栏盖住、底部按钮被导航条遮挡。
+     颜色统一引用语义 @color/qs_*，随系统深色模式切换。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FFFFFF"
+    android:background="@color/qs_background"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
     android:fitsSystemWindows="true"
     android:orientation="vertical">
 
@@ -36,7 +39,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@string/app_name"
-                android:textColor="#212121"
+                android:textColor="@color/qs_text_primary"
                 android:textSize="20sp"
                 android:textStyle="bold" />
 
@@ -45,7 +48,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="2dp"
                 android:text="@string/app_subtitle"
-                android:textColor="#757575"
+                android:textColor="@color/qs_text_secondary"
                 android:textSize="13sp" />
         </LinearLayout>
     </LinearLayout>
@@ -53,7 +56,7 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#E0E0E0" />
+        android:background="@color/qs_divider" />
 
     <!-- 开关行：文字与 Switch 分离，避免长文字被 thumb 截断 -->
     <LinearLayout
@@ -69,7 +72,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="@string/overlay_enable"
-            android:textColor="#212121"
+            android:textColor="@color/qs_text_primary"
             android:textSize="15sp" />
 
         <Switch
@@ -81,7 +84,41 @@
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#E0E0E0" />
+        android:background="@color/qs_divider" />
+
+    <!-- 悬浮按钮文字：自定义悬浮按钮上显示的字符，单个字符观感最佳 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="10dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/overlay_button_text"
+            android:textColor="@color/qs_text_primary"
+            android:textSize="15sp" />
+
+        <EditText
+            android:id="@+id/button_text_input"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:hint="@string/overlay_button_text_hint"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:maxLength="4"
+            android:maxLines="1" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/qs_divider" />
 
     <!-- 列表区 -->
     <FrameLayout
@@ -105,7 +142,7 @@
             android:gravity="center"
             android:padding="32dp"
             android:text="@string/empty_list"
-            android:textColor="#9E9E9E"
+            android:textColor="@color/qs_text_hint"
             android:textSize="14sp"
             android:visibility="gone" />
     </FrameLayout>

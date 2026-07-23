@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  夜间配色（系统深色模式时生效，API 29+）。仅覆盖需要变化的语义颜色；
+  未在此定义的颜色（如悬浮按钮饱和蓝 qs_accent_overlay_bg、特殊键 chip 灰）
+  沿用 values/colors.xml 的默认值。
+-->
+<resources>
+
+    <color name="qs_background">#121212</color>
+    <color name="qs_surface">#1E1E1E</color>
+
+    <color name="qs_text_primary">#ECECEC</color>
+    <color name="qs_text_secondary">#B0B0B0</color>
+    <color name="qs_text_hint">#8E8E8E</color>
+    <color name="qs_field_label">#B0B0B0</color>
+
+    <color name="qs_divider">#2C2C2C</color>
+    <color name="qs_segment_bg">#2A2A2A</color>
+    <color name="qs_overlay_divider">#2C2C2C</color>
+    <color name="qs_overlay_close">#B0B0B0</color>
+
+    <!-- 深色底上用更亮的蓝/红以保证对比度 -->
+    <color name="qs_accent">#64B5F6</color>
+    <color name="qs_danger">#EF5350</color>
+
+</resources>

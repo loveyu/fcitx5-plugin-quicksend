@@ -7,6 +7,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
 import android.widget.TextView
+import androidx.core.content.ContextCompat
+import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.data.KeyNameMapping
 
 /**
@@ -40,11 +42,11 @@ object KeyPicker {
                 if (row.isHeader) {
                     tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
                     tv.setTypeface(null, Typeface.BOLD)
-                    tv.setTextColor(0xFF424242.toInt())
+                    tv.setTextColor(ContextCompat.getColor(context, R.color.qs_field_label))
                 } else {
                     tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f)
                     tv.setTypeface(null, Typeface.NORMAL)
-                    tv.setTextColor(0xFF212121.toInt())
+                    tv.setTextColor(ContextCompat.getColor(context, R.color.qs_text_primary))
                 }
                 return tv
             }

@@ -32,6 +32,8 @@
     <string name="overlay_list_title">快捷发送</string>
     <string name="overlay_close">关闭</string>
     <string name="overlay_open_settings">设置</string>
+    <string name="overlay_button_text">悬浮按钮文字</string>
+    <string name="overlay_button_text_hint">发</string>
     <string name="action_back">返回</string>
     <string name="overlay_permission_rationale">需要“显示在其他应用上层”权限才能显示悬浮按钮，正在跳转授权…</string>
     <string name="send_mode">发送模式</string>

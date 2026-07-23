@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 29+（Android 10）覆盖：Theme.DeviceDefault.DayNight 是框架主题，仅在
+  API 29 起存在，故放在 values-v29，避免在更低版本上引用不存在的样式导致崩溃。
+  它会让系统控件（EditText/RadioButton/Switch/Button 等）与 ?android:attr 主题属性
+  随系统深色模式自动切换；语义颜色由 values-night/colors.xml 提供。
+-->
+<resources>
+
+    <style name="Theme.QuickSend" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+</resources>
