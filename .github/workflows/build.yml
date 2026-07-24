@@ -30,6 +30,18 @@ jobs:
           sed -i 's|mirrors.cloud.tencent.com/gradle|services.gradle.org/distributions|g' gradle/wrapper/gradle-wrapper.properties
           sed -i '/maven.aliyun.com/d' settings.gradle.kts
 
+      - name: Sherpa AAR version
+        id: sherpaver
+        run: |
+          v=$(awk -F'"' '/sherpaAarVersion/{print $2}' build.gradle.kts)
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Sherpa AAR cache
+        uses: actions/cache@v4
+        with:
+          path: libs
+          key: sherpa-aar-${{ steps.sherpaver.outputs.v }}
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
@@ -70,6 +82,18 @@ jobs:
         run: |
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
           echo "SIGNING_STORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Sherpa AAR version
+        id: sherpaver
+        run: |
+          v=$(awk -F'"' '/sherpaAarVersion/{print $2}' build.gradle.kts)
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Sherpa AAR cache
+        uses: actions/cache@v4
+        with:
+          path: libs
+          key: sherpa-aar-${{ steps.sherpaver.outputs.v }}
 
       - name: Build Release APK
         env:

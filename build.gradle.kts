@@ -127,15 +127,38 @@ tasks.register("downloadSherpaAar") {
     doLast {
         if (sherpaAarFile.exists()) return@doLast
         sherpaAarFile.parentFile.mkdirs()
-        val url = "https://huggingface.co/csukuangfj/sherpa-onnx-libs/resolve/main/android/aar/sherpa-onnx-$sherpaAarVersion.aar"
-        println("Downloading Sherpa-ONNX AAR $sherpaAarVersion ...")
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.instanceFollowRedirects = true
-        conn.connect()
-        conn.inputStream.use { input ->
-            sherpaAarFile.outputStream().use { output -> input.copyTo(output) }
+        // CI 访问 huggingface.co 偶发超时，故多源 + 重试 + 兜底镜像
+        val sources = listOf(
+            "https://huggingface.co/csukuangfj/sherpa-onnx-libs/resolve/main/android/aar/sherpa-onnx-$sherpaAarVersion.aar",
+            "https://hf-mirror.com/csukuangfj/sherpa-onnx-libs/resolve/main/android/aar/sherpa-onnx-$sherpaAarVersion.aar"
+        )
+        var lastError: Throwable? = null
+        for (url in sources) {
+            for (attempt in 1..3) {
+                println("Downloading Sherpa-ONNX AAR $sherpaAarVersion (attempt $attempt) from $url")
+                try {
+                    val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 60000
+                        readTimeout = 180000
+                        instanceFollowRedirects = true
+                    }
+                    conn.connect()
+                    conn.inputStream.use { input ->
+                        sherpaAarFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    if (sherpaAarFile.length() > 1_000_000) {
+                        println("Sherpa AAR saved to ${sherpaAarFile.absolutePath} (${sherpaAarFile.length()} bytes)")
+                        return@doLast
+                    }
+                    sherpaAarFile.delete()
+                } catch (e: Throwable) {
+                    println("Attempt failed: ${e.message}")
+                    sherpaAarFile.delete()
+                    lastError = e
+                }
+            }
         }
-        println("Sherpa AAR saved to ${sherpaAarFile.absolutePath}")
+        throw lastError ?: RuntimeException("Failed to download Sherpa AAR")
     }
 }
 
