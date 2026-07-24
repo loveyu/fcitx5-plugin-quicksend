@@ -138,3 +138,9 @@ tasks.register("downloadSherpaAar") {
         println("Sherpa AAR saved to ${sherpaAarFile.absolutePath}")
     }
 }
+
+// CI 中 AAR 被 gitignore（libs/ 为空），需在编译前自动下载；本地已存在则跳过。
+// fileTree("libs") 延迟解析，故编译任务依赖下载任务后即可拿到 AAR。
+tasks.matching { it.name.startsWith("compile") && it.name.endsWith("Kotlin") }.configureEach {
+    dependsOn("downloadSherpaAar")
+}
