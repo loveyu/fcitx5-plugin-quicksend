@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.RecognitionEvent
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.SpeechRecognizer
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceLog
 import java.io.File
 
 /**
@@ -70,6 +71,7 @@ class SherpaRecognizer(
 
     override suspend fun start() {
         if (started) return
+        VoiceLog.i(TAG, "start: modelDir=$modelDir")
         val ready = CompletableDeferred<Boolean>()
         running = true
         commitFinal = false
@@ -79,9 +81,11 @@ class SherpaRecognizer(
         // 等待原生对象初始化完成（加载模型/AudioRecord 较重）
         if (!ready.await()) {
             // nativeSession 已发 Error 并清理、关闭 channel
+            VoiceLog.e(TAG, "start: initialization failed")
             throw IllegalStateException("Sherpa recognizer initialization failed")
         }
         started = true
+        VoiceLog.i(TAG, "start: native ready")
     }
 
     /**
@@ -126,20 +130,25 @@ class SherpaRecognizer(
 
             // 正常停止（running 被置 false 后循环退出）：flush 最终结果
             if (commitFinal) {
+                VoiceLog.i(TAG, "native: flushing final result")
                 try {
                     st.inputFinished()
                     while (rec.isReady(st)) rec.decode(st)
                     val text = rec.getResult(st).text.trim()
+                    VoiceLog.i(TAG, "native: final=\"$text\"")
                     eventChannel.trySend(RecognitionEvent.Final(text))
                 } catch (e: Throwable) {
+                    VoiceLog.e(TAG, "native: flush final failed", e)
                     eventChannel.trySend(RecognitionEvent.Error(e))
                 }
             }
         } catch (e: Throwable) {
+            VoiceLog.e(TAG, "native session error: ${e.message}", e)
             eventChannel.trySend(RecognitionEvent.Error(e))
             if (!initialized) ready.complete(false)
         } finally {
             cleanup()
+            VoiceLog.i(TAG, "native: cleanup done")
             runCatching { eventChannel.close() }
         }
     }
@@ -167,6 +176,7 @@ class SherpaRecognizer(
 
     override suspend fun stop() {
         if (!started) return
+        VoiceLog.i(TAG, "stop")
         commitFinal = true
         running = false
         awaitNativeThread()
@@ -175,6 +185,7 @@ class SherpaRecognizer(
 
     override suspend fun cancel() {
         if (!started) return
+        VoiceLog.i(TAG, "cancel")
         commitFinal = false
         running = false
         awaitNativeThread()
@@ -185,7 +196,8 @@ class SherpaRecognizer(
         val t = nativeThread ?: return
         // join 是阻塞调用，切到 IO 线程等待 nativeThread 结束（它会在 ~100ms 内退出）
         withContext(Dispatchers.IO) {
-            runCatching { t.join(2_000) }
+            val done = runCatching { t.join(2_000); !t.isAlive }.getOrDefault(false)
+            if (!done) VoiceLog.w(TAG, "native thread still alive after join(2s)")
         }
     }
 
@@ -195,6 +207,7 @@ class SherpaRecognizer(
      * 本方法不直接接触原生对象，故即使与 stop/cancel 并发也安全。
      */
     fun releaseNow() {
+        VoiceLog.i(TAG, "releaseNow")
         commitFinal = false
         running = false
         nativeThread?.let { runCatching { it.join(2_000) } }
@@ -226,5 +239,9 @@ class SherpaRecognizer(
         stream = null
         runCatching { recognizer?.release() }
         recognizer = null
+    }
+
+    private companion object {
+        const val TAG = "SherpaRec"
     }
 }

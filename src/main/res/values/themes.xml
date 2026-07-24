@@ -14,4 +14,10 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
+    <!-- 编辑抽屉进出动画：从底部滑入 / 向底部滑出 -->
+    <style name="QuickSendBottomSheetAnim" parent="@android:style/Animation">
+        <item name="android:windowEnterAnimation">@anim/qs_slide_up</item>
+        <item name="android:windowExitAnimation">@anim/qs_slide_down</item>
+    </style>
+
 </resources>

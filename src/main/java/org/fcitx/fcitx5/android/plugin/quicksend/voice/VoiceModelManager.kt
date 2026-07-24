@@ -42,6 +42,8 @@ sealed interface DownloadState {
  */
 object VoiceModelManager {
 
+    private const val TAG = "VoiceModel"
+
     const val MODEL_DIR_NAME = "sherpa/zh-14m"
 
     /** 默认下载源（HuggingFace）。用户可在设置页改为镜像。 */
@@ -66,14 +68,23 @@ object VoiceModelManager {
     /** 启动下载（若进行中则先取消）。状态经 [state] 流出。 */
     fun download(context: Context, baseUrl: String, names: SherpaModelNames, proxy: ProxyConfig) {
         job?.cancel()
+        VoiceLog.i(
+            TAG,
+            "download: baseUrl=${baseUrl.trimEnd('/')}, proxy=${if (proxy.enabled) "${proxy.type} ${proxy.host}:${proxy.port}" else "none"}"
+        )
         job = scope.launch {
             _state.value = DownloadState.Downloading(0)
             runCatching { doDownload(context, baseUrl.trimEnd('/'), names, proxy) }
                 .onSuccess {
-                    _state.value = if (isReady(context, names)) DownloadState.Ready
+                    val ready = isReady(context, names)
+                    _state.value = if (ready) DownloadState.Ready
                     else DownloadState.Failed("Model files incomplete after download")
+                    VoiceLog.i(TAG, "download finished, ready=$ready")
                 }
-                .onFailure { _state.value = DownloadState.Failed(it.message ?: it.javaClass.simpleName) }
+                .onFailure {
+                    VoiceLog.e(TAG, "download failed: ${it.message}", it)
+                    _state.value = DownloadState.Failed(it.message ?: it.javaClass.simpleName)
+                }
         }
     }
 
@@ -109,11 +120,13 @@ object VoiceModelManager {
         val client = VoiceHttp.client(proxy)
         // 先 HEAD 汇总各文件大小用于进度（不可得则为 0 → 进度不可知）
         val total = names.all().sumOf { contentLength(client, "$baseUrl/$it") }.coerceAtLeast(1L)
+        VoiceLog.i(TAG, "download: ${names.all().size} files, total≈$total bytes → ${dir.absolutePath}")
         var downloaded = 0L
         for (name in names.all()) {
             ensureActive()
             val target = File(dir, name)
             val part = File(dir, "$name.part")
+            VoiceLog.d(TAG, "download file: $name")
             streamToFile(client, "$baseUrl/$name", part) { delta ->
                 downloaded += delta
                 val pct = (downloaded * 100 / total).toInt().coerceIn(0, 100)
@@ -123,6 +136,7 @@ object VoiceModelManager {
             if (!part.renameTo(target)) {
                 throw IOException("Failed to finalize $name")
             }
+            VoiceLog.d(TAG, "download file done: $name (${target.length()} bytes)")
         }
         SherpaModelFiles.resolve(dir, names)
     }

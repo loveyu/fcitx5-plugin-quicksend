@@ -1,12 +1,17 @@
 package org.fcitx.fcitx5.android.plugin.quicksend.ui
 
-import android.app.AlertDialog
+import android.app.Dialog
 import android.content.Context
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -18,19 +23,30 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.QuickSendManager
 import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 
 /**
- * 条目编辑对话框：label、内容段（FlowLayout）、特殊键选择、发送模式、使用次数。
+ * 条目编辑抽屉：从底部弹出的 2/3 屏高容器，顶栏固定「取消 / 保存」于右上角，
+ * 下方为可滚动编辑内容（label、内容段、特殊键、发送模式、使用次数）。
  *
  * 新建时 [entry] = null；编辑时传入已有条目。
  */
 object EditEntryDialog {
 
     fun show(context: Context, entry: QuickSendEntry?) {
-        val view = LayoutInflater.from(context).inflate(R.layout.dialog_edit_entry, null)
-        val labelInput = view.findViewById<EditText>(R.id.label_input)
-        val container = view.findViewById<ViewGroup>(R.id.segments_container)
-        val textInput = view.findViewById<EditText>(R.id.text_input)
-        val modeGroup = view.findViewById<RadioGroup>(R.id.mode_group)
-        val useCountInput = view.findViewById<EditText>(R.id.use_count)
+        val dialog = Dialog(context)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setContentView(R.layout.dialog_edit_entry)
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
+
+        val titleView = dialog.findViewById<TextView>(R.id.dialog_title)
+        val cancelBtn = dialog.findViewById<TextView>(R.id.btn_cancel)
+        val saveBtn = dialog.findViewById<TextView>(R.id.btn_save)
+        val labelInput = dialog.findViewById<EditText>(R.id.label_input)
+        val container = dialog.findViewById<ViewGroup>(R.id.segments_container)
+        val textInput = dialog.findViewById<EditText>(R.id.text_input)
+        val modeGroup = dialog.findViewById<RadioGroup>(R.id.mode_group)
+        val useCountInput = dialog.findViewById<EditText>(R.id.use_count)
+
+        titleView.setText(if (entry == null) R.string.edit_entry_new else R.string.edit_entry_edit)
 
         val segments: MutableList<ContentSegment> =
             entry?.segments?.toMutableList() ?: mutableListOf()
@@ -67,7 +83,7 @@ object EditEntryDialog {
         }
         refresh()
 
-        view.findViewById<View>(R.id.add_text).setOnClickListener {
+        dialog.findViewById<View>(R.id.add_text).setOnClickListener {
             val s = textInput.text?.toString().orEmpty()
             if (s.isNotEmpty()) {
                 segments.add(ContentSegment(ContentSegment.TYPE_TEXT, s))
@@ -76,45 +92,56 @@ object EditEntryDialog {
             }
         }
 
-        view.findViewById<View>(R.id.add_key).setOnClickListener {
+        dialog.findViewById<View>(R.id.add_key).setOnClickListener {
             KeyPicker.show(context) { name ->
                 segments.add(ContentSegment(ContentSegment.TYPE_KEY, name))
                 refresh()
             }
         }
 
-        AlertDialog.Builder(context)
-            .setTitle(if (entry == null) R.string.edit_entry_new else R.string.edit_entry_edit)
-            .setView(view)
-            .setPositiveButton(R.string.save) { _, _ ->
-                if (segments.isEmpty()) {
-                    Toast.makeText(context, R.string.segments_empty, Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                val label = labelInput.text?.toString()?.trim().orEmpty()
-                val mode = if (modeGroup.checkedRadioButtonId == R.id.mode_sequence)
-                    QuickSendEntry.MODE_SEQUENCE else QuickSendEntry.MODE_COMBINATION
-                val useCount = useCountInput.text?.toString()?.toIntOrNull() ?: 0
-                val snapshot = segments.toList()
-                val id = entry?.id ?: 0L
+        cancelBtn.setOnClickListener { dialog.dismiss() }
 
-                QuickSendManager.launch {
-                    val ok = if (entry == null) {
-                        QuickSendManager.add(label, snapshot, mode)
-                    } else {
-                        QuickSendManager.update(id, label, snapshot, mode, useCount)
-                        true
-                    }
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(
-                            context,
-                            if (ok) R.string.saved else R.string.max_entries_reached,
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+        fun doSave() {
+            if (segments.isEmpty()) {
+                Toast.makeText(context, R.string.segments_empty, Toast.LENGTH_SHORT).show()
+                return
+            }
+            val label = labelInput.text?.toString()?.trim().orEmpty()
+            val mode = if (modeGroup.checkedRadioButtonId == R.id.mode_sequence)
+                QuickSendEntry.MODE_SEQUENCE else QuickSendEntry.MODE_COMBINATION
+            val useCount = useCountInput.text?.toString()?.toIntOrNull() ?: 0
+            val snapshot = segments.toList()
+            val id = entry?.id ?: 0L
+
+            QuickSendManager.launch {
+                val ok = if (entry == null) {
+                    QuickSendManager.add(label, snapshot, mode)
+                } else {
+                    QuickSendManager.update(id, label, snapshot, mode, useCount)
+                    true
+                }
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(
+                        context,
+                        if (ok) R.string.saved else R.string.max_entries_reached,
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
+            dialog.dismiss()
+        }
+        saveBtn.setOnClickListener { doSave() }
+
+        // 贴底、2/3 屏高、圆角背景、滑入动画、背景变暗
+        val window = dialog.window ?: return
+        window.setGravity(Gravity.BOTTOM)
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val height = (context.resources.displayMetrics.heightPixels * 2 / 3)
+            .coerceAtLeast(context.resources.displayMetrics.heightPixels / 2)
+        window.setLayout(WindowManager.LayoutParams.MATCH_PARENT, height)
+        window.setWindowAnimations(R.style.QuickSendBottomSheetAnim)
+        window.setDimAmount(0.32f)
+
+        dialog.show()
     }
 }

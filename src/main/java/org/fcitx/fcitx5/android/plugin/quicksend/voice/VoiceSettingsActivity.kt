@@ -6,20 +6,23 @@ package org.fcitx.fcitx5.android.plugin.quicksend.voice
 
 import android.Manifest
 import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.View
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.fcitx.fcitx5.android.plugin.quicksend.BuildConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.databinding.ActivityVoiceSettingsBinding
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.ProxyConfig
-import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.ProxyType
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
 
 /**
@@ -50,6 +53,10 @@ class VoiceSettingsActivity : Activity() {
             updateState(VoiceModelManager.state.value)
         }
 
+        // 调试日志：展示路径 + 分享（便于用户复制上报）
+        binding.logPath.text = VoiceLog.path(this)
+        binding.shareLogButton.setOnClickListener { shareLog() }
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -74,13 +81,7 @@ class VoiceSettingsActivity : Activity() {
         binding.modelUrl.setText(
             prefs.getString(QuickSendPrefs.VOICE_MODEL_BASE_URL, VoiceModelManager.DEFAULT_BASE_URL)
         )
-        binding.proxySwitch.isChecked = prefs.getBoolean(QuickSendPrefs.VOICE_PROXY_ENABLED, false)
-        val type = prefs.getString(QuickSendPrefs.VOICE_PROXY_TYPE, "HTTP")
-        binding.proxyType.setSelection(if (type == "SOCKS") 1 else 0)
-        binding.proxyHost.setText(prefs.getString(QuickSendPrefs.VOICE_PROXY_HOST, "127.0.0.1"))
-        binding.proxyPort.setText(prefs.getInt(QuickSendPrefs.VOICE_PROXY_PORT, 7890).toString())
-        binding.proxyUser.setText(prefs.getString(QuickSendPrefs.VOICE_PROXY_USER, ""))
-        binding.proxyPass.setText(prefs.getString(QuickSendPrefs.VOICE_PROXY_PASS, ""))
+        binding.proxyUri.setText(loadProxyUri())
         binding.namesEncoder.setText(
             prefs.getString(QuickSendPrefs.VOICE_NAME_ENCODER, SherpaModelNames.DEFAULT_ENCODER)
         )
@@ -95,6 +96,28 @@ class VoiceSettingsActivity : Activity() {
         )
     }
 
+    /** 读取代理 URI；首次升级时把旧版多字段代理迁移成一条 URI。 */
+    private fun loadProxyUri(): String {
+        prefs.getString(QuickSendPrefs.VOICE_PROXY_URI, null)?.let { return it }
+        if (!prefs.getBoolean(QuickSendPrefs.VOICE_PROXY_ENABLED_LEGACY, false)) return ""
+        val scheme = if (prefs.getString(QuickSendPrefs.VOICE_PROXY_TYPE_LEGACY, "HTTP") == "SOCKS") "socks5" else "http"
+        val host = prefs.getString(QuickSendPrefs.VOICE_PROXY_HOST_LEGACY, "") ?: ""
+        val port = prefs.getInt(QuickSendPrefs.VOICE_PROXY_PORT_LEGACY, 7890)
+        val user = prefs.getString(QuickSendPrefs.VOICE_PROXY_USER_LEGACY, "") ?: ""
+        val pass = prefs.getString(QuickSendPrefs.VOICE_PROXY_PASS_LEGACY, "") ?: ""
+        val uri = buildString {
+            append(scheme).append("://")
+            if (user.isNotEmpty()) {
+                append(user)
+                if (pass.isNotEmpty()) append(":").append(pass)
+                append("@")
+            }
+            append(host).append(":").append(port)
+        }
+        prefs.edit().putString(QuickSendPrefs.VOICE_PROXY_URI, uri).apply()
+        return uri
+    }
+
     private fun baseUrl(): String =
         binding.modelUrl.text.toString().trim().ifBlank { VoiceModelManager.DEFAULT_BASE_URL }
 
@@ -105,34 +128,35 @@ class VoiceSettingsActivity : Activity() {
         tokens = binding.namesTokens.text.toString().trim().ifBlank { SherpaModelNames.DEFAULT_TOKENS }
     )
 
-    private fun proxy(): ProxyConfig {
-        val typeStr = binding.proxyType.selectedItem as? String ?: "HTTP"
-        return ProxyConfig(
-            enabled = binding.proxySwitch.isChecked,
-            type = if (typeStr == "SOCKS") ProxyType.SOCKS else ProxyType.HTTP,
-            host = binding.proxyHost.text.toString().trim(),
-            port = binding.proxyPort.text.toString().trim().toIntOrNull() ?: 7890,
-            user = binding.proxyUser.text.toString().trim(),
-            pass = binding.proxyPass.text.toString()
-        )
-    }
+    private fun proxy(): ProxyConfig =
+        ProxyConfig.fromUri(binding.proxyUri.text.toString().trim())
 
     private fun persistPrefs() {
-        val p = proxy()
         val n = names()
         prefs.edit()
             .putString(QuickSendPrefs.VOICE_MODEL_BASE_URL, baseUrl())
-            .putBoolean(QuickSendPrefs.VOICE_PROXY_ENABLED, p.enabled)
-            .putString(QuickSendPrefs.VOICE_PROXY_TYPE, if (p.type == ProxyType.SOCKS) "SOCKS" else "HTTP")
-            .putString(QuickSendPrefs.VOICE_PROXY_HOST, p.host)
-            .putInt(QuickSendPrefs.VOICE_PROXY_PORT, p.port)
-            .putString(QuickSendPrefs.VOICE_PROXY_USER, p.user)
-            .putString(QuickSendPrefs.VOICE_PROXY_PASS, p.pass)
+            .putString(QuickSendPrefs.VOICE_PROXY_URI, binding.proxyUri.text.toString().trim())
             .putString(QuickSendPrefs.VOICE_NAME_ENCODER, n.encoder)
             .putString(QuickSendPrefs.VOICE_NAME_DECODER, n.decoder)
             .putString(QuickSendPrefs.VOICE_NAME_JOINER, n.joiner)
             .putString(QuickSendPrefs.VOICE_NAME_TOKENS, n.tokens)
             .apply()
+    }
+
+    private fun shareLog() {
+        val file = VoiceLog.file(this)
+        if (file == null) {
+            Toast.makeText(this, R.string.voice_log_unavailable, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "${BuildConfig.APPLICATION_ID}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, getString(R.string.voice_log_section))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, getString(R.string.voice_log_share_title)))
     }
 
     private fun updateState(state: DownloadState) {

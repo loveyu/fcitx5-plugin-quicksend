@@ -20,13 +20,16 @@ object QuickSendPrefs {
     /** 模型下载 base URL（默认 HuggingFace，可改镜像） */
     const val VOICE_MODEL_BASE_URL = "voice_model_base_url"
 
-    /** 代理 */
-    const val VOICE_PROXY_ENABLED = "voice_proxy_enabled"
-    const val VOICE_PROXY_TYPE = "voice_proxy_type" // "HTTP" | "SOCKS"
-    const val VOICE_PROXY_HOST = "voice_proxy_host"
-    const val VOICE_PROXY_PORT = "voice_proxy_port"
-    const val VOICE_PROXY_USER = "voice_proxy_user"
-    const val VOICE_PROXY_PASS = "voice_proxy_pass"
+    /** 代理（单个 URI 字符串，如 http://127.0.0.1:7890、socks5://user:pass@host:1080；空=不用） */
+    const val VOICE_PROXY_URI = "voice_proxy_uri"
+
+    // 旧版多字段代理（仅用于迁移到 VOICE_PROXY_URI），新代码不再写入
+    const val VOICE_PROXY_ENABLED_LEGACY = "voice_proxy_enabled"
+    const val VOICE_PROXY_TYPE_LEGACY = "voice_proxy_type"
+    const val VOICE_PROXY_HOST_LEGACY = "voice_proxy_host"
+    const val VOICE_PROXY_PORT_LEGACY = "voice_proxy_port"
+    const val VOICE_PROXY_USER_LEGACY = "voice_proxy_user"
+    const val VOICE_PROXY_PASS_LEGACY = "voice_proxy_pass"
 
     /** 模型文件名（默认 zh 14M int8，可改以适配其它流式模型） */
     const val VOICE_NAME_ENCODER = "voice_name_encoder"

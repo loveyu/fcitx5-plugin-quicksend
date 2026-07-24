@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 插件主页右上角「更多」菜单：语音输入设置入口（后续可在此追加条目） -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_voice_settings"
+        android:title="@string/voice_settings_entry" />
+</menu>

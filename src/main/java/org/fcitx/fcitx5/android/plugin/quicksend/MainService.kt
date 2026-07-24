@@ -39,6 +39,9 @@ class MainService : Service() {
 
     override fun onBind(intent: Intent): IBinder {
         Log.d(TAG, "Bound by fcitx5-android")
+        // 输入法（重新）绑定本插件时，确保已启用的悬浮按钮服务在运行
+        // （更新插件后输入法会重连，借此自恢复，无需用户手动开关）
+        OverlayRestarter.startIfEnabled(this)
         bindService(
             Intent("$FCITX_APP_ID.quicksend.IPC").setPackage(FCITX_APP_ID),
             connection,

@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import kotlinx.coroutines.CoroutineScope
@@ -53,8 +54,20 @@ class PluginActivity : Activity() {
 
         binding.backButton.setOnClickListener { finish() }
 
-        binding.voiceSettingsRow.setOnClickListener {
-            startActivity(Intent(this, VoiceSettingsActivity::class.java))
+        // 标题栏「更多」：语音输入设置等子项入口
+        binding.moreButton.setOnClickListener { anchor ->
+            val popup = PopupMenu(this, anchor)
+            popup.menuInflater.inflate(R.menu.plugin_more, popup.menu)
+            popup.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.action_voice_settings -> {
+                        startActivity(Intent(this, VoiceSettingsActivity::class.java))
+                        true
+                    }
+                }
+                false
+            }
+            popup.show()
         }
 
         binding.addButton.setOnClickListener { EditEntryDialog.show(this, null) }

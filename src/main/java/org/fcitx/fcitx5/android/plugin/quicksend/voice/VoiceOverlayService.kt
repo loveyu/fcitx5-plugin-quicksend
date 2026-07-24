@@ -66,11 +66,13 @@ class VoiceOverlayService : Service() {
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
+            VoiceLog.i(TAG, "bound to fcitx IQuickSendService")
             remoteService = IQuickSendService.Stub.asInterface(service)
             evaluateAndStart()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
+            VoiceLog.w(TAG, "fcitx IQuickSendService disconnected")
             remoteService = null
         }
     }
@@ -79,11 +81,13 @@ class VoiceOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        VoiceLog.i(TAG, "onCreate")
         windowManager = getSystemService(WINDOW_SERVICE) as? android.view.WindowManager
         startForegroundCompat()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        VoiceLog.i(TAG, "onStartCommand action=${intent?.action}")
         startForegroundCompat()
         if (intent?.action != ACTION_START) {
             stopSelf()
@@ -98,6 +102,7 @@ class VoiceOverlayService : Service() {
                     Context.BIND_AUTO_CREATE
                 )
             }.getOrDefault(false)
+            VoiceLog.i(TAG, "bindService result=$bound (target=$fcitxAppId)")
         }
         showOverlay()
         evaluateAndStart()
@@ -108,9 +113,18 @@ class VoiceOverlayService : Service() {
         if (overlayView == null) return
         if (controller != null) return
         when {
-            !hasRecordAudio() -> showPrompt(getString(R.string.voice_need_record_permission))
-            !VoiceModelManager.isReady(this) -> showPrompt(getString(R.string.voice_model_not_ready))
-            else -> startVoice()
+            !hasRecordAudio() -> {
+                VoiceLog.w(TAG, "evaluate: RECORD_AUDIO not granted")
+                showPrompt(getString(R.string.voice_need_record_permission))
+            }
+            !VoiceModelManager.isReady(this) -> {
+                VoiceLog.w(TAG, "evaluate: model not ready")
+                showPrompt(getString(R.string.voice_model_not_ready))
+            }
+            else -> {
+                VoiceLog.i(TAG, "evaluate: ok, starting voice")
+                startVoice()
+            }
         }
     }
 
@@ -315,6 +329,7 @@ class VoiceOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        VoiceLog.i(TAG, "onDestroy")
         controller?.destroy()
         controller = null
         removeOverlay()
@@ -357,5 +372,6 @@ class VoiceOverlayService : Service() {
         const val ACTION_START = "org.fcitx.fcitx5.android.plugin.quicksend.voice.START"
         private const val CHANNEL_ID = "voice_input"
         private const val NOTIF_ID = 0x7e01
+        private const val TAG = "VoiceOverlay"
     }
 }

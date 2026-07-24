@@ -1,128 +1,198 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 编辑抽屉：从底部弹出的 2/3 屏高容器。
+     顶部为固定的标题栏（取消 / 保存 在右上角，始终可见），下方为可滚动内容。
+     根布局圆角背景 bg_bottom_sheet；窗口动画见 QuickSendBottomSheetAnim。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_bottom_sheet"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
 
+    <!-- 抓取指示 -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="4dp"
+        android:background="@color/qs_overlay_divider" />
+
+    <!-- 固定标题栏：标题 + 取消 / 保存（右上角） -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="20dp">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="4dp">
 
         <TextView
-            android:layout_width="match_parent"
+            android:id="@+id/dialog_title"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="@string/label_field"
-            android:textColor="@color/qs_field_label"
-            android:textSize="13sp" />
-
-        <EditText
-            android:id="@+id/label_input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/label_hint"
-            android:inputType="text"
-            android:maxLines="1" />
+            android:layout_weight="1"
+            android:paddingStart="8dp"
+            android:text="@string/edit_entry_edit"
+            android:textColor="@color/qs_text_primary"
+            android:textSize="17sp"
+            android:textStyle="bold" />
 
         <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/content_segments"
-            android:textColor="@color/qs_field_label"
-            android:textSize="13sp" />
-
-        <org.fcitx.fcitx5.android.plugin.quicksend.ui.FlowLayout
-            android:id="@+id/segments_container"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@color/qs_segment_bg"
-            android:minHeight="48dp"
-            android:padding="8dp" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/text_input"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="@string/text_input_hint"
-                android:inputType="text" />
-
-            <Button
-                android:id="@+id/add_text"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/add_text"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/add_key"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/add_special_key" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/send_mode"
-            android:textColor="@color/qs_field_label"
-            android:textSize="13sp" />
-
-        <RadioGroup
-            android:id="@+id/mode_group"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <RadioButton
-                android:id="@+id/mode_combination"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:checked="true"
-                android:text="@string/mode_combination" />
-
-            <RadioButton
-                android:id="@+id/mode_sequence"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:text="@string/mode_sequence" />
-        </RadioGroup>
-
-        <LinearLayout
+            android:id="@+id/btn_cancel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:padding="12dp"
+            android:text="@string/cancel"
+            android:textColor="@color/qs_text_secondary"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/btn_save"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:padding="12dp"
+            android:text="@string/save"
+            android:textColor="@color/qs_accent"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/qs_divider" />
+
+    <!-- 可滚动编辑内容 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/use_count"
+                android:text="@string/label_field"
                 android:textColor="@color/qs_field_label"
                 android:textSize="13sp" />
 
             <EditText
-                android:id="@+id/use_count"
-                android:layout_width="100dp"
+                android:id="@+id/label_input"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:gravity="center"
-                android:inputType="number"
-                android:maxLength="6"
-                android:text="0" />
-        </LinearLayout>
+                android:hint="@string/label_hint"
+                android:inputType="text"
+                android:maxLines="1" />
 
-    </LinearLayout>
-</ScrollView>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/content_segments"
+                android:textColor="@color/qs_field_label"
+                android:textSize="13sp" />
+
+            <org.fcitx.fcitx5.android.plugin.quicksend.ui.FlowLayout
+                android:id="@+id/segments_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/qs_segment_bg"
+                android:minHeight="48dp"
+                android:padding="8dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <EditText
+                    android:id="@+id/text_input"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="@string/text_input_hint"
+                    android:inputType="text" />
+
+                <Button
+                    android:id="@+id/add_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/add_text"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/add_key"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/add_special_key" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/send_mode"
+                android:textColor="@color/qs_field_label"
+                android:textSize="13sp" />
+
+            <RadioGroup
+                android:id="@+id/mode_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/mode_combination"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="@string/mode_combination" />
+
+                <RadioButton
+                    android:id="@+id/mode_sequence"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="16dp"
+                    android:text="@string/mode_sequence" />
+            </RadioGroup>
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/use_count"
+                    android:textColor="@color/qs_field_label"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/use_count"
+                    android:layout_width="100dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:gravity="center"
+                    android:inputType="number"
+                    android:maxLength="6"
+                    android:text="0" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

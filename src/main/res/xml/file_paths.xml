@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 路径：语音调试日志可位于外部专用目录或内部目录的 logs/ 子目录 -->
+<paths>
+    <external-files-path
+        name="voice_logs"
+        path="logs/" />
+    <files-path
+        name="voice_logs_internal"
+        path="logs/" />
+</paths>

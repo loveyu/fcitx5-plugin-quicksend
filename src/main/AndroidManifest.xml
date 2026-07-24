@@ -64,6 +64,17 @@
             android:exported="false"
             android:theme="@style/Theme.QuickSend" />
 
+        <!-- 分享语音调试日志（应用专用外部目录文件经 content:// 授权给其它应用） -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>
