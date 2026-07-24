@@ -33,7 +33,7 @@ jobs:
       - name: Sherpa AAR version
         id: sherpaver
         run: |
-          v=$(awk -F'"' '/sherpaAarVersion/{print $2}' build.gradle.kts)
+          v=$(awk -F'"' '/sherpaAarVersion = "/{print $2; exit}' build.gradle.kts)
           echo "v=$v" >> "$GITHUB_OUTPUT"
 
       - name: Restore Sherpa AAR cache
@@ -86,7 +86,7 @@ jobs:
       - name: Sherpa AAR version
         id: sherpaver
         run: |
-          v=$(awk -F'"' '/sherpaAarVersion/{print $2}' build.gradle.kts)
+          v=$(awk -F'"' '/sherpaAarVersion = "/{print $2; exit}' build.gradle.kts)
           echo "v=$v" >> "$GITHUB_OUTPUT"
 
       - name: Restore Sherpa AAR cache
