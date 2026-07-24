@@ -22,6 +22,7 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 import org.fcitx.fcitx5.android.plugin.quicksend.databinding.ActivityPluginBinding
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.EditEntryDialog
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.QuickSendAdapter
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceSettingsActivity
 
 /**
  * 插件设置入口（响应 `${fcitxAppId}.plugin.MANIFEST`）。
@@ -51,6 +52,10 @@ class PluginActivity : Activity() {
         binding.entriesList.adapter = adapter
 
         binding.backButton.setOnClickListener { finish() }
+
+        binding.voiceSettingsRow.setOnClickListener {
+            startActivity(Intent(this, VoiceSettingsActivity::class.java))
+        }
 
         binding.addButton.setOnClickListener { EditEntryDialog.show(this, null) }
 

@@ -7,6 +7,14 @@
     <uses-permission android:name="${fcitxAppId}.permission.IPC" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- 语音输入：录音 / 模型下载 / 前台服务（麦克风） -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name="org.fcitx.fcitx5.android.plugin.quicksend.PluginApplication"
         android:label="@string/app_name"
@@ -36,6 +44,25 @@
         </service>
 
         <service android:name="org.fcitx.fcitx5.android.plugin.quicksend.QuickSendOverlayService" />
+
+        <!-- 语音浮层：主程序点语音按钮后 startForegroundService 启动。
+             exported + 签名 permission.PLUGIN（与 MainService 一致，仅同签名主程序可启动）；
+             foregroundServiceType=microphone 满足 Android 14 后台录音要求。 -->
+        <service
+            android:name="org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceOverlayService"
+            android:exported="true"
+            android:foregroundServiceType="microphone"
+            android:permission="${fcitxAppId}.permission.PLUGIN">
+            <intent-filter>
+                <action android:name="org.fcitx.fcitx5.android.plugin.quicksend.voice.START" />
+            </intent-filter>
+        </service>
+
+        <!-- 语音设置页（模型下载 / 代理）：从 PluginActivity 跳转，不导出 -->
+        <activity
+            android:name="org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QuickSend" />
 
     </application>
 

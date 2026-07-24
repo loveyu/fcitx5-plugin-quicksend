@@ -46,4 +46,46 @@
     <!-- 模式图标无障碍 -->
     <string name="mode_combination_desc">组合键模式</string>
     <string name="mode_sequence_desc">序列模式</string>
+
+    <!-- 语音输入 -->
+    <string name="voice_settings_entry">语音输入设置</string>
+    <string name="voice_settings_title">语音输入</string>
+    <string name="voice_need_record_permission">需要录音权限，点击前往设置授权</string>
+    <string name="voice_model_not_ready">模型未下载，点击前往设置下载</string>
+    <string name="voice_listening">正在聆听…</string>
+    <string name="voice_committing">提交中…</string>
+    <string name="voice_stop">停止</string>
+    <string name="voice_finish">完成</string>
+    <string name="voice_open_settings">前往设置</string>
+    <string name="voice_overlay_title">语音输入</string>
+    <string name="voice_channel_name">语音输入</string>
+    <string name="voice_notif_title">语音输入中</string>
+    <string name="voice_notif_text">正在识别语音</string>
+    <string name="voice_model_section">识别模型（Sherpa-ONNX 中文流式）</string>
+    <string name="voice_model_url">模型下载地址 (HTTP)</string>
+    <string name="voice_model_status_idle">模型未下载</string>
+    <string name="voice_model_status_ready">模型已就绪</string>
+    <string name="voice_download">下载模型</string>
+    <string name="voice_redownload">重新下载</string>
+    <string name="voice_delete_model">删除模型</string>
+    <string name="voice_proxy_section">代理（可选，用于访问 HuggingFace）</string>
+    <string name="voice_proxy_enable">启用代理</string>
+    <string name="voice_proxy_type">代理类型</string>
+    <string name="voice_proxy_host">主机</string>
+    <string name="voice_proxy_port">端口</string>
+    <string name="voice_proxy_user">用户名（可选）</string>
+    <string name="voice_proxy_pass">密码（可选）</string>
+    <string name="voice_advanced_section">高级（模型文件名，留空用默认）</string>
+    <string name="voice_name_encoder">encoder 文件名</string>
+    <string name="voice_name_decoder">decoder 文件名</string>
+    <string name="voice_name_joiner">joiner 文件名</string>
+    <string name="voice_name_tokens">tokens 文件名</string>
+    <string name="voice_usage_hint">使用：在 fcitx5 键盘设置中开启「显示语音输入按钮」，点键盘上的麦克风图标即可启动本地识别。</string>
+    <string name="voice_downloading">下载中 %1$d%%</string>
+    <string name="voice_download_failed">下载失败：%1$s</string>
+
+    <string-array name="voice_proxy_types">
+        <item>HTTP</item>
+        <item>SOCKS</item>
+    </string-array>
 </resources>

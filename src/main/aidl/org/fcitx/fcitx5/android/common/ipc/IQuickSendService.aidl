@@ -16,6 +16,12 @@ interface IQuickSendService {
     /** Send a full modifier+key combination (modifiers down, key, modifiers up). */
     boolean sendKeyCombination(int keyCode, boolean alt, boolean ctrl, boolean shift, boolean meta);
 
+    /** Set composing (preedit) text in the focused editor (underlined while composing). */
+    boolean setComposingText(String text);
+
+    /** Finish composing, leaving whatever was composed committed in place. */
+    boolean finishComposingText();
+
     /** 订阅输入法软键盘窗口可见性变化。 */
     void registerInputWindowStateListener(IInputWindowStateListener listener);
 

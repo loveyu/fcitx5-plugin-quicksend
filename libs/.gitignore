@@ -1,0 +1,3 @@
+# Sherpa-ONNX 官方 AAR 体积大（~40MB），不入库。
+# 本地构建前运行 ./gradlew downloadSherpaAar 或手动放置 sherpa-onnx-*.aar 到此目录。
+*.aar

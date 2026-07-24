@@ -120,6 +120,40 @@
         android:layout_height="1dp"
         android:background="@color/qs_divider" />
 
+    <!-- 语音输入入口 -->
+    <LinearLayout
+        android:id="@+id/voice_settings_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="14dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/voice_settings_entry"
+            android:textColor="@color/qs_text_primary"
+            android:textSize="15sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="›"
+            android:textColor="@color/qs_text_secondary"
+            android:textSize="18sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/qs_divider" />
+
     <!-- 列表区 -->
     <FrameLayout
         android:layout_width="match_parent"

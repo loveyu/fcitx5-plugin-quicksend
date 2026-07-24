@@ -1,3 +1,5 @@
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Properties
 
 plugins {
@@ -78,6 +80,16 @@ android {
             signingConfig = signingConfigs.getByName("release")
         }
     }
+
+    // 按 ABI 拆分输出独立 APK，避免单包过大（Sherpa native 库随 ABI 拆开）
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
+        }
+    }
 }
 
 dependencies {
@@ -96,5 +108,33 @@ dependencies {
     // UI: 条目列表
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 
+    // 语音：Sherpa-ONNX 官方 AAR（放 libs/；运行 ./gradlew downloadSherpaAar 拉取或手动放置）
+    implementation(fileTree("libs") { include("*.aar") })
+
+    // 网络：模型下载 + 后续在线 Provider / AI 润色统一走 OkHttp
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     testImplementation("junit:junit:4.13.2")
+}
+
+// Sherpa-ONNX 官方 AAR 拉取（构建期可选任务；离线/被墙时手动放 AAR 到 libs/）。
+// HuggingFace 不通时为 gradle 设置代理（gradle.properties 的 https.proxyHost/Port）或改下面 URL 为镜像。
+val sherpaAarVersion = "1.12.21"
+val sherpaAarFile = file("libs/sherpa-onnx-$sherpaAarVersion.aar")
+tasks.register("downloadSherpaAar") {
+    description = "Download the official Sherpa-ONNX Android AAR into libs/"
+    outputs.file(sherpaAarFile)
+    doLast {
+        if (sherpaAarFile.exists()) return@doLast
+        sherpaAarFile.parentFile.mkdirs()
+        val url = "https://huggingface.co/csukuangfj/sherpa-onnx-libs/resolve/main/android/aar/sherpa-onnx-$sherpaAarVersion.aar"
+        println("Downloading Sherpa-ONNX AAR $sherpaAarVersion ...")
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.instanceFollowRedirects = true
+        conn.connect()
+        conn.inputStream.use { input ->
+            sherpaAarFile.outputStream().use { output -> input.copyTo(output) }
+        }
+        println("Sherpa AAR saved to ${sherpaAarFile.absolutePath}")
+    }
 }
