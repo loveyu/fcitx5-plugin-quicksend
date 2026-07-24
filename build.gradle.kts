@@ -109,7 +109,8 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 
     // 语音：Sherpa-ONNX 官方 AAR（放 libs/；运行 ./gradlew downloadSherpaAar 拉取或手动放置）
-    implementation(fileTree("libs") { include("*.aar") })
+    // builtBy 声明 AAR 由 downloadSherpaAar 产出，所有消费任务（compile / collectDependencies 等）自动依赖它
+    implementation(fileTree("libs") { include("*.aar"); builtBy("downloadSherpaAar") })
 
     // 网络：模型下载 + 后续在线 Provider / AI 润色统一走 OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
