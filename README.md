@@ -1,10 +1,12 @@
 # fcitx5-plugin-quicksend
 
-fcitx5 安卓输入法的**快捷发送**独立插件。在输入法中快速发送预设的快捷键组合（如 `Ctrl+Shift+Del`、`Shift+Tab`）或文本句子。
+fcitx5 安卓输入法的独立插件 APK，提供**快捷发送**与**语音输入**两个功能：在输入法中快速发送预设的快捷键组合（如 `Ctrl+Shift+Del`、`Shift+Tab`）或文本句子；以及基于本地流式识别的中文语音输入。
 
 > 这是 [fcitx5-android](https://github.com/fcitx5-android/fcitx5-android) 的**独立插件 APK**（参考 `fcitx5-android-clipboard-helper-plugin` 的插件协议），不是集成进主项目的模块。
 
 ## 功能
+
+### 快捷发送
 
 - 发送内容支持：快捷键组合、单键、文本句子、混合
 - 两种发送模式：
@@ -13,20 +15,30 @@ fcitx5 安卓输入法的**快捷发送**独立插件。在输入法中快速发
 - 完整的条目管理（增删改）、按使用次数倒序排序、使用计数器
 - 编辑器提供特殊键分组下拉（修饰键 / 控制键 / 导航键 / 功能键 / 符号键 / 数字键盘）
 - 最大 500 条，全量加载
+- 软键盘弹出时显示边缘悬浮按钮，点开即选即发；收起自动隐藏
+
+### 语音输入
+
+- 基于 **Sherpa-ONNX** 的本地流式中文识别（Zipformer-transducer），无需联网即可识别
+- 识别过程实时写入输入框组合区（下划线预览），完成后提交最终文本
+- 模型运行时下载（默认 HuggingFace，可在设置页改镜像 / 代理），约十几 MB
+- 前台服务 + 麦克风类型，满足 Android 14 后台录音要求
 
 ## 架构
 
-作为独立插件 APK，通过 AIDL IPC 与 fcitx5-android 主程序通信：
+作为独立插件 APK，通过 AIDL IPC 与 fcitx5-android 主程序通信。主程序绑定插件 `MainService` 后，插件反向绑定主程序的 `IQuickSendService`：
 
 ```
-quicksend 插件  ──bind──▶  fcitx5-android (IFcitxRemoteService)
-                            ├─ commitText / 发送文本
-                            └─ sendDownUpKeyEvents / 发送按键
+quicksend 插件  ──bind──▶  fcitx5-android (IQuickSendService)
+                            ├─ commitText / setComposingText   发送文本、语音组合态
+                            ├─ sendKeyDownUpKey                发送单键
+                            └─ sendKeyCombination              发送组合键
 ```
 
-数据层使用 Room 存储 `QuickSendEntry`，内容段 `ContentSegment` 用 `kotlinx.serialization` 序列化为 JSON。
+- **快捷发送**：Room 存储 `QuickSendEntry`，内容段 `ContentSegment` 用 `kotlinx.serialization` 序列化为 JSON；悬浮窗 / 设置页选中条目后经上述 IPC 发送。
+- **语音输入**：`VoiceOverlayService` 由主程序语音按钮启动 → 本地 Sherpa 流式识别 → partial 经 `setComposingText`、final 经 `commitText` 注入输入框。
 
-> ⚠️ 主动发送按键 / 文本需要 fcitx5-android 主程序在 `IFcitxRemoteService` 中提供相应的 IPC 方法。详见 `docs/fcitx5-plugin-quicksend/`。
+> ⚠️ 主动发送按键 / 文本 / 语音注入均需 fcitx5-android 主程序在 `IQuickSendService` 中实现相应方法（本仓库姐妹目录 `fcitx5-android` 的 fork，IPC 代码在其 `release` 分支）。详见 [`docs/architecture.md`](docs/architecture.md)、[`docs/voice-subsystem.md`](docs/voice-subsystem.md)。
 
 ## 签名要求
 
@@ -49,12 +61,20 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 ./gradlew assembleRelease   # 发布版（绑定 fcitx5-android release）
 ```
 
-产物位于 `build/outputs/apk/`。
+产物位于 `build/outputs/apk/`（按 ABI 拆分为 arm64-v8a / armeabi-v7a / x86_64 三个包）。
+
+构建期会自动下载 Sherpa-ONNX AAR 到 `libs/`（被墙时可手动放置或配代理）；语音识别模型在 App 内首次使用时从「语音输入设置」页下载。
 
 ## 文档
 
-需求与设计文档位于 [`docs/fcitx5-plugin-quicksend/`](docs/fcitx5-plugin-quicksend/)：
+实现与运维文档（`docs/`）：
+
+- [`architecture.md`](docs/architecture.md) — 组件架构、IPC 双向绑定、数据流
+- [`voice-subsystem.md`](docs/voice-subsystem.md) — 语音管线、native 线程模型、模型下载与代理
+- [`build-and-release.md`](docs/build-and-release.md) — 构建 / 签名 / CI / 版本号 / 镜像源细节
+
+需求与设计文档（[`docs/fcitx5-plugin-quicksend/`](docs/fcitx5-plugin-quicksend/)）：
 
 - `requirements-analysis.md` — 需求分析
-- `data-model-proposal.md` — 数据模型与特殊键映射
-- `implementation-guide.md` — 实现指南
+- `data-model-proposal.md` — 数据模型与特殊键映射表
+- `implementation-guide.md` — 实现指南（设计期）
