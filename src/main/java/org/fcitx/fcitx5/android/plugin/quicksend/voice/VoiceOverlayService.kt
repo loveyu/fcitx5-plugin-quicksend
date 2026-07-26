@@ -59,6 +59,9 @@ class VoiceOverlayService : Service() {
     private var statusText: TextView? = null
     private var buttonRow: LinearLayout? = null
     private var promptView: TextView? = null
+    private var pauseBtn: TextView? = null
+    private var backspaceBtn: TextView? = null
+    private var finishBtn: TextView? = null
 
     private var controller: VoiceController? = null
     private var remoteService: IQuickSendService? = null
@@ -151,13 +154,33 @@ class VoiceOverlayService : Service() {
         val st = statusText ?: return
         when (state) {
             VoiceUiState.Idle -> { /* 会话结束，服务将 stopSelf */ }
+            VoiceUiState.Initializing -> {
+                pt.text = ""
+                st.text = getString(R.string.voice_initializing)
+                pauseBtn?.text = getString(R.string.voice_pause)
+                backspaceBtn?.visibility = View.VISIBLE
+                finishBtn?.visibility = View.VISIBLE
+            }
             VoiceUiState.Listening -> {
                 pt.text = ""
                 st.text = getString(R.string.voice_listening)
+                pauseBtn?.text = getString(R.string.voice_pause)
+                backspaceBtn?.visibility = View.VISIBLE
+                finishBtn?.visibility = View.VISIBLE
             }
             is VoiceUiState.Partial -> {
                 pt.text = state.text
                 st.text = getString(R.string.voice_listening)
+                pauseBtn?.text = getString(R.string.voice_pause)
+                backspaceBtn?.visibility = View.VISIBLE
+                finishBtn?.visibility = View.VISIBLE
+            }
+            VoiceUiState.Paused -> {
+                pt.text = ""
+                st.text = getString(R.string.voice_paused)
+                pauseBtn?.text = getString(R.string.voice_resume)
+                backspaceBtn?.visibility = View.VISIBLE
+                finishBtn?.visibility = View.VISIBLE
             }
             VoiceUiState.Finishing -> st.text = getString(R.string.voice_committing)
             is VoiceUiState.Error -> st.text = state.message
@@ -180,7 +203,7 @@ class VoiceOverlayService : Service() {
             setTextColor(resolveColor(R.color.qs_overlay_close))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             setPadding(dp(12), dp(6), dp(10), dp(6))
-            setOnClickListener { cancelAndStop() }
+            setOnClickListener { closeAndStop() }
         }
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -214,16 +237,29 @@ class VoiceOverlayService : Service() {
         }
         promptView = prompt
 
-        val stopBtn = makeButton(getString(R.string.voice_stop), secondary = true) { cancelAndStop() }
-        val finishBtn = makeButton(getString(R.string.voice_finish), secondary = false) {
+        val stopBtn = makeButton(getString(R.string.voice_pause), secondary = true) {
+            if (controller?.state?.value is VoiceUiState.Paused) {
+                controller?.start()
+            } else {
+                controller?.pause()
+            }
+        }
+        val delBtn = makeButton(getString(R.string.voice_backspace), secondary = true) {
+            controller?.backspace()
+        }
+        val finishBtnView = makeButton(getString(R.string.voice_finish), secondary = false) {
             controller?.finish()
         }
+        pauseBtn = stopBtn
+        backspaceBtn = delBtn
+        finishBtn = finishBtnView
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
             setPadding(dp(10), dp(4), dp(10), dp(10))
-            addView(stopBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { weight = 1f })
-            addView(finishBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { weight = 1f })
+            addView(stopBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(delBtn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(finishBtnView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
         buttonRow = row
 
@@ -300,8 +336,8 @@ class VoiceOverlayService : Service() {
         statusText?.text = ""
     }
 
-    private fun cancelAndStop() {
-        runCatching { controller?.cancel() }
+    private fun closeAndStop() {
+        runCatching { controller?.close() }
         stopSelf()
     }
 
@@ -326,6 +362,9 @@ class VoiceOverlayService : Service() {
         statusText = null
         buttonRow = null
         promptView = null
+        pauseBtn = null
+        backspaceBtn = null
+        finishBtn = null
     }
 
     override fun onDestroy() {

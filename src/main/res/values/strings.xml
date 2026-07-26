@@ -54,7 +54,12 @@
     <string name="voice_need_record_permission">需要录音权限，点击前往设置授权</string>
     <string name="voice_model_not_ready">模型未下载，点击前往设置下载</string>
     <string name="voice_listening">正在聆听…</string>
+    <string name="voice_initializing">正在初始化…</string>
+    <string name="voice_paused">已暂停</string>
     <string name="voice_committing">提交中…</string>
+    <string name="voice_pause">暂停</string>
+    <string name="voice_resume">继续</string>
+    <string name="voice_backspace">退格</string>
     <string name="voice_stop">停止</string>
     <string name="voice_finish">完成</string>
     <string name="voice_open_settings">前往设置</string>

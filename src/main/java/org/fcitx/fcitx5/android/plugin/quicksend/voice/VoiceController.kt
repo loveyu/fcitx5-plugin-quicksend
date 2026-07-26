@@ -25,8 +25,10 @@ import java.io.File
  */
 sealed interface VoiceUiState {
     object Idle : VoiceUiState
+    object Initializing : VoiceUiState
     object Listening : VoiceUiState
     data class Partial(val text: String) : VoiceUiState
+    object Paused : VoiceUiState
     object Finishing : VoiceUiState
     data class Error(val message: String) : VoiceUiState
     /** 模型未就绪。 */
@@ -56,7 +58,10 @@ class VoiceController(
 
     fun start() {
         val current = _state.value
-        if (current is VoiceUiState.Listening || current is VoiceUiState.Partial) return
+        if (current is VoiceUiState.Initializing ||
+            current is VoiceUiState.Listening ||
+            current is VoiceUiState.Partial
+        ) return
         if (!VoiceModelManager.isReady(context, names)) {
             VoiceLog.w(TAG, "start aborted: model not ready at $modelDir")
             _state.value = VoiceUiState.NotReady
@@ -65,14 +70,19 @@ class VoiceController(
         VoiceLog.i(TAG, "start: creating recognizer, modelDir=$modelDir")
         val rec = SherpaRecognizer(context, modelDir, names)
         recognizer = rec
-        _state.value = VoiceUiState.Listening
+        _state.value = VoiceUiState.Initializing
+        collectJob?.cancel()
         collectJob = scope.launch {
             rec.events.collect { handle(it) }
         }
-        // 识别器初始化（加载模型/AudioRecord）较重，放 IO 线程
         scope.launch(Dispatchers.IO) {
             runCatching { rec.start() }
-                .onSuccess { VoiceLog.i(TAG, "recognizer started") }
+                .onSuccess {
+                    VoiceLog.i(TAG, "recognizer started")
+                    if (_state.value !is VoiceUiState.Error && _state.value !is VoiceUiState.Paused) {
+                        _state.value = VoiceUiState.Listening
+                    }
+                }
                 .onFailure {
                     VoiceLog.e(TAG, "recognizer start failed", it)
                     _state.value = VoiceUiState.Error(it.message ?: "启动识别失败")
@@ -80,11 +90,42 @@ class VoiceController(
         }
     }
 
+    /** 暂停：停止录音但保留会话，可调用 [start] 恢复。 */
+    fun pause() {
+        if (_state.value !is VoiceUiState.Initializing &&
+            _state.value !is VoiceUiState.Listening &&
+            _state.value !is VoiceUiState.Partial
+        ) return
+        VoiceLog.i(TAG, "pause requested")
+        scope.launch {
+            runCatching { recognizer?.cancel() }
+            withContext(Dispatchers.IO) {
+                val r = remote()
+                if (r != null) runCatching { r.setComposingText("") }
+                    .onFailure { VoiceLog.w(TAG, "clear composing failed", it) }
+            }
+            if (_state.value is VoiceUiState.Paused) return@launch
+            _state.value = VoiceUiState.Paused
+        }
+    }
+
+    /** 向后删除一个字符（发送 KEYCODE_DEL）。 */
+    fun backspace() {
+        VoiceLog.d(TAG, "backspace")
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                val r = remote()
+                if (r != null) runCatching {
+                    r.sendKeyDownUpKey(android.view.KeyEvent.KEYCODE_DEL, 0)
+                }.onFailure { VoiceLog.w(TAG, "backspace failed", it) }
+            }
+        }
+    }
+
     private suspend fun handle(event: RecognitionEvent) {
         when (event) {
             is RecognitionEvent.Partial -> {
                 _state.value = VoiceUiState.Partial(event.text)
-                // IPC 可能阻塞（主项目 setComposingText 派发到 IMS 主线程），切 IO
                 withContext(Dispatchers.IO) {
                     val r = remote()
                     if (r == null) {
@@ -126,7 +167,7 @@ class VoiceController(
         }
     }
 
-    /** 完成：停止识别并提交最终结果。 */
+    /** 完成：停止识别并提交最终结果，结束后关闭会话。 */
     fun finish() {
         VoiceLog.i(TAG, "finish requested")
         scope.launch {
@@ -137,9 +178,9 @@ class VoiceController(
         }
     }
 
-    /** 取消：丢弃结果并清空输入框组合区。 */
-    fun cancel() {
-        VoiceLog.i(TAG, "cancel requested")
+    /** 关闭：丢弃未提交结果并结束会话。 */
+    fun close() {
+        VoiceLog.i(TAG, "close requested")
         scope.launch {
             runCatching { recognizer?.cancel() }
             withContext(Dispatchers.IO) {
@@ -150,6 +191,9 @@ class VoiceController(
             endSession()
         }
     }
+
+    /** @deprecated 保留兼容，使用 [close] 代替。 */
+    fun cancel() = close()
 
     private fun endSession() {
         VoiceLog.i(TAG, "session end")
