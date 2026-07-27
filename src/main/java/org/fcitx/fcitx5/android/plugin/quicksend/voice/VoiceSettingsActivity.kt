@@ -185,7 +185,8 @@ class VoiceSettingsActivity : Activity() {
                 binding.downloadButton.isEnabled = true
             }
             is DownloadState.Downloading -> {
-                binding.modelStatus.text = getString(R.string.voice_downloading, state.percent)
+                val label = state.label.ifEmpty { "下载中 ${state.percent}%" }
+                binding.modelStatus.text = label
                 binding.modelProgress.visibility = View.VISIBLE
                 binding.modelProgress.progress = if (state.percent < 0) 0 else state.percent
                 binding.downloadButton.isEnabled = false

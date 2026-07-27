@@ -32,7 +32,7 @@ import java.io.IOException
  */
 sealed interface DownloadState {
     object Idle : DownloadState
-    data class Downloading(val percent: Int) : DownloadState // 0..100；-1 表示未知总大小
+    data class Downloading(val percent: Int, val label: String = "") : DownloadState // 0..100；-1 表示未知总大小
     object Ready : DownloadState
     data class Failed(val message: String) : DownloadState
 }
@@ -135,9 +135,10 @@ object VoiceModelManager {
         streamToFile(client, url, tmp) { delta ->
             downloaded += delta
             val pct = (downloaded * 100 / total).toInt().coerceIn(0, 100)
-            _state.value = DownloadState.Downloading(pct)
+            _state.value = DownloadState.Downloading(pct, "下载中 $pct%")
         }
         VoiceLog.i(TAG, "download done (${tmp.length()} bytes), extracting...")
+        _state.value = DownloadState.Downloading(-1, "解压中…")
 
         try {
             extractTarBz2(tmp, dir, names)
@@ -185,7 +186,8 @@ object VoiceModelManager {
         val total = names.all().sumOf { contentLength(client, "$baseUrl/$it") }.coerceAtLeast(1L)
         VoiceLog.i(TAG, "download: ${names.all().size} files, total≈$total bytes → ${dir.absolutePath}")
         var downloaded = 0L
-        for (name in names.all()) {
+        val count = names.all().size
+        for ((i, name) in names.all().withIndex()) {
             ensureActive()
             val target = File(dir, name)
             val part = File(dir, "$name.part")
@@ -193,7 +195,7 @@ object VoiceModelManager {
             streamToFile(client, "$baseUrl/$name", part) { delta ->
                 downloaded += delta
                 val pct = (downloaded * 100 / total).toInt().coerceIn(0, 100)
-                _state.value = DownloadState.Downloading(pct)
+                _state.value = DownloadState.Downloading(pct, "下载中 ($pct%) · $name · ${i + 1}/$count")
             }
             if (target.exists()) target.delete()
             if (!part.renameTo(target)) {
