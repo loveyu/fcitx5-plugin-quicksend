@@ -151,6 +151,25 @@
                 android:layout_width="match_parent"
                 android:layout_height="16dp" />
 
+            <!-- 识别参数 -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/voice_recognition_section"
+                android:textColor="@color/qs_text_primary"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:id="@+id/recognition_params"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="16dp" />
+
             <!-- 高级：文件名 -->
             <TextView
                 android:layout_width="match_parent"

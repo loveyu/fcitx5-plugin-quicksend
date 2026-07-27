@@ -51,6 +51,23 @@
     <!-- 语音输入 -->
     <string name="voice_settings_entry">语音输入设置</string>
     <string name="voice_settings_title">语音输入</string>
+    <string name="voice_recognition_section">识别参数</string>
+    <string name="voice_param_default">默认: %1$s</string>
+    <string name="voice_param_recommended">推荐: %1$s</string>
+    <string name="voice_param_title_decoding">解码方式</string>
+    <string name="voice_param_desc_decoding">greedy_search 速度最快；modified_beam_search 开启多路径搜索，准确度更高且支持热词。</string>
+    <string name="voice_param_title_paths">最大活跃路径</string>
+    <string name="voice_param_desc_paths">仅 modified_beam_search 生效。值越大搜索越充分、准确度越高，但速度越慢。</string>
+    <string name="voice_param_title_blank">空白惩罚</string>
+    <string name="voice_param_desc_blank">对 transducer 解码中 blank 符号的惩罚系数。\n&gt;0 降低漏字（更激进输出），&lt;0 减少多字。</string>
+    <string name="voice_param_title_silence">端点静音阈值（秒）</string>
+    <string name="voice_param_desc_silence">识别到语音后，连续静音超过此秒数则自动结束本句。值越小结束越快，值越大等待越长。</string>
+    <string name="voice_param_title_maxutter">单句最长时长（秒）</string>
+    <string name="voice_param_desc_maxutter">无论是否静音，单次识别超过此秒数将强制结束。防止长时间未检测到静音时不结束。</string>
+    <string name="voice_param_title_threads">ONNX 推理线程数</string>
+    <string name="voice_param_desc_threads">线程数越多解码越快，但 CPU 占用越高。建议不超过手机大核数。</string>
+    <string name="voice_param_title_provider">推理后端</string>
+    <string name="voice_param_desc_provider">cpu 通用兼容性最好；xnnpack 在部分 SoC 上更快但可能不稳定。</string>
     <string name="voice_need_record_permission">需要录音权限，点击前往设置授权</string>
     <string name="voice_model_not_ready">模型未下载，点击前往设置下载</string>
     <string name="voice_listening">正在聆听…</string>

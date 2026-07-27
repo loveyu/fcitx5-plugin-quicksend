@@ -36,4 +36,14 @@ object QuickSendPrefs {
     const val VOICE_NAME_DECODER = "voice_name_decoder"
     const val VOICE_NAME_JOINER = "voice_name_joiner"
     const val VOICE_NAME_TOKENS = "voice_name_tokens"
+
+    // ===== 识别参数 =====
+
+    const val VOICE_DECODING_METHOD = "voice_decoding_method"
+    const val VOICE_MAX_ACTIVE_PATHS = "voice_max_active_paths"
+    const val VOICE_BLANK_PENALTY = "voice_blank_penalty"
+    const val VOICE_ENDPOINT_SILENCE = "voice_endpoint_silence"
+    const val VOICE_ENDPOINT_MAX_UTTER = "voice_endpoint_max_utter"
+    const val VOICE_NUM_THREADS = "voice_num_threads"
+    const val VOICE_PROVIDER = "voice_provider"
 }

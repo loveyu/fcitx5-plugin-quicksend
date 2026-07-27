@@ -47,6 +47,7 @@ class VoiceController(
     private val modelDir: File,
     private val remote: () -> IQuickSendService?,
     private val names: SherpaModelNames = SherpaModelNames(),
+    private val config: RecognitionConfig = RecognitionConfig(),
     private val refiner: TextRefiner = NoOpRefiner,
     private val onSessionEnd: () -> Unit = {}
 ) {
@@ -83,7 +84,7 @@ class VoiceController(
         partialBackspaceOffset = 0
         rawPartialText = ""
         scope.launch(Dispatchers.IO) {
-            runCatching { SherpaModelHolder.getOrLoad(modelDir, names) }
+            runCatching { SherpaModelHolder.getOrLoad(modelDir, names, config) }
                 .onSuccess { onlineRec ->
                     VoiceLog.i(TAG, "model ready, creating recognizer")
                     val rec = SherpaRecognizer(onlineRec)

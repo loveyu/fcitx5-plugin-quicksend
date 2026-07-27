@@ -37,6 +37,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
 import org.fcitx.fcitx5.android.plugin.quicksend.BuildConfig
+import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
 import java.io.File
@@ -135,11 +136,22 @@ class VoiceOverlayService : Service() {
         promptView?.visibility = View.GONE
         buttonRow?.visibility = View.VISIBLE
         val dir = File(getExternalFilesDir(null) ?: filesDir, VoiceModelManager.MODEL_DIR_NAME)
+        val prefs = getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE)
+        val recConfig = RecognitionConfig(
+            decodingMethod = prefs.getString(QuickSendPrefs.VOICE_DECODING_METHOD, RecognitionConfig.DEFAULT_DECODING_METHOD) ?: RecognitionConfig.DEFAULT_DECODING_METHOD,
+            maxActivePaths = prefs.getInt(QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS, RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS),
+            blankPenalty = prefs.getFloat(QuickSendPrefs.VOICE_BLANK_PENALTY, RecognitionConfig.DEFAULT_BLANK_PENALTY),
+            endpointSilence = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_SILENCE, RecognitionConfig.DEFAULT_ENDPOINT_SILENCE),
+            endpointMaxUtterance = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER, RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE),
+            numThreads = prefs.getInt(QuickSendPrefs.VOICE_NUM_THREADS, RecognitionConfig.DEFAULT_NUM_THREADS),
+            provider = prefs.getString(QuickSendPrefs.VOICE_PROVIDER, RecognitionConfig.DEFAULT_PROVIDER) ?: RecognitionConfig.DEFAULT_PROVIDER
+        )
         val ctrl = VoiceController(
             context = this,
             modelDir = dir,
             remote = { remoteService },
             names = SherpaModelNames(),
+            config = recConfig,
             onSessionEnd = { mainHandler.post { stopSelf() } }
         )
         controller = ctrl

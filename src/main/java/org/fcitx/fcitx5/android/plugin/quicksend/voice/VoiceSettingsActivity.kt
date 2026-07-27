@@ -6,10 +6,16 @@ package org.fcitx.fcitx5.android.plugin.quicksend.voice
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
@@ -34,6 +40,7 @@ class VoiceSettingsActivity : Activity() {
     private lateinit var binding: ActivityVoiceSettingsBinding
     private val prefs by lazy { getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val paramEdits = mutableMapOf<String, EditText>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +49,7 @@ class VoiceSettingsActivity : Activity() {
 
         binding.backButton.setOnClickListener { finish() }
 
+        buildParamRows()
         loadPrefs()
 
         binding.downloadButton.setOnClickListener {
@@ -95,6 +103,7 @@ class VoiceSettingsActivity : Activity() {
         binding.namesTokens.setText(
             prefs.getString(QuickSendPrefs.VOICE_NAME_TOKENS, SherpaModelNames.DEFAULT_TOKENS)
         )
+        loadParamPrefs()
     }
 
     /** 读取代理 URI；首次升级时把旧版多字段代理迁移成一条 URI。 */
@@ -134,29 +143,140 @@ class VoiceSettingsActivity : Activity() {
 
     private fun persistPrefs() {
         val n = names()
-        prefs.edit()
+        val editor = prefs.edit()
             .putString(QuickSendPrefs.VOICE_MODEL_BASE_URL, baseUrl())
             .putString(QuickSendPrefs.VOICE_PROXY_URI, binding.proxyUri.text.toString().trim())
             .putString(QuickSendPrefs.VOICE_NAME_ENCODER, n.encoder)
             .putString(QuickSendPrefs.VOICE_NAME_DECODER, n.decoder)
             .putString(QuickSendPrefs.VOICE_NAME_JOINER, n.joiner)
             .putString(QuickSendPrefs.VOICE_NAME_TOKENS, n.tokens)
-            .apply()
+        saveParamPrefs(editor)
+        editor.apply()
+    }
+
+    private fun saveParamPrefs(editor: android.content.SharedPreferences.Editor) {
+        val paramPrefKeys = mapOf(
+            "decodingMethod" to QuickSendPrefs.VOICE_DECODING_METHOD,
+            "maxActivePaths" to QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS,
+            "blankPenalty" to QuickSendPrefs.VOICE_BLANK_PENALTY,
+            "endpointSilence" to QuickSendPrefs.VOICE_ENDPOINT_SILENCE,
+            "endpointMaxUtterance" to QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER,
+            "numThreads" to QuickSendPrefs.VOICE_NUM_THREADS,
+            "provider" to QuickSendPrefs.VOICE_PROVIDER
+        )
+        for ((key, prefKey) in paramPrefKeys) {
+            paramEdits[key]?.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                editor.putString(prefKey, it)
+            } ?: editor.remove(prefKey)
+        }
+    }
+
+    private fun loadParamPrefs() {
+        val paramDefaults = mapOf(
+            "decodingMethod" to RecognitionConfig.DEFAULT_DECODING_METHOD,
+            "maxActivePaths" to RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS.toString(),
+            "blankPenalty" to RecognitionConfig.DEFAULT_BLANK_PENALTY.toString(),
+            "endpointSilence" to RecognitionConfig.DEFAULT_ENDPOINT_SILENCE.toString(),
+            "endpointMaxUtterance" to RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE.toString(),
+            "numThreads" to RecognitionConfig.DEFAULT_NUM_THREADS.toString(),
+            "provider" to RecognitionConfig.DEFAULT_PROVIDER
+        )
+        val paramPrefKeys = mapOf(
+            "decodingMethod" to QuickSendPrefs.VOICE_DECODING_METHOD,
+            "maxActivePaths" to QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS,
+            "blankPenalty" to QuickSendPrefs.VOICE_BLANK_PENALTY,
+            "endpointSilence" to QuickSendPrefs.VOICE_ENDPOINT_SILENCE,
+            "endpointMaxUtterance" to QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER,
+            "numThreads" to QuickSendPrefs.VOICE_NUM_THREADS,
+            "provider" to QuickSendPrefs.VOICE_PROVIDER
+        )
+        for ((key, prefKey) in paramPrefKeys) {
+            paramEdits[key]?.setText(prefs.getString(prefKey, null) ?: paramDefaults[key])
+        }
+    }
+
+    private fun buildParamRows() {
+        val container = binding.recognitionParams
+        val paramItemDefs = listOf(
+            Triple("decodingMethod", R.string.voice_param_title_decoding, R.string.voice_param_desc_decoding),
+            Triple("maxActivePaths", R.string.voice_param_title_paths, R.string.voice_param_desc_paths),
+            Triple("blankPenalty", R.string.voice_param_title_blank, R.string.voice_param_desc_blank),
+            Triple("endpointSilence", R.string.voice_param_title_silence, R.string.voice_param_desc_silence),
+            Triple("endpointMaxUtterance", R.string.voice_param_title_maxutter, R.string.voice_param_desc_maxutter),
+            Triple("numThreads", R.string.voice_param_title_threads, R.string.voice_param_desc_threads),
+            Triple("provider", R.string.voice_param_title_provider, R.string.voice_param_desc_provider)
+        )
+        val density = resources.displayMetrics.density
+        for ((key, titleRes, descRes) in paramItemDefs) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = ViewGroup.MarginLayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = (8 * density).toInt() }
+            }
+            val label = TextView(this).apply {
+                text = getString(titleRes)
+                setTextColor(ContextCompat.getColor(this@VoiceSettingsActivity, R.color.qs_text_primary))
+                textSize = 13f
+            }
+            row.addView(label)
+            val help = TextView(this).apply {
+                text = "?"
+                setTextColor(ContextCompat.getColor(this@VoiceSettingsActivity, R.color.qs_accent_overlay_bg))
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setPadding((6 * density).toInt(), 0, (6 * density).toInt(), 0)
+                setOnClickListener {
+                    val helpInfo = recognitionParamHelps.firstOrNull { it.key == key }
+                    AlertDialog.Builder(this@VoiceSettingsActivity)
+                        .setTitle(getString(titleRes))
+                        .setMessage(buildString {
+                            append(getString(descRes)).append("\n\n")
+                            append(getString(R.string.voice_param_default, helpInfo?.default ?: "-")).append("\n")
+                            append(getString(R.string.voice_param_recommended, helpInfo?.recommended ?: "-"))
+                        })
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                }
+            }
+            row.addView(help)
+            val edit = EditText(this).apply {
+                val lp = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                lp.marginStart = (8 * density).toInt()
+                layoutParams = lp
+                inputType = android.text.InputType.TYPE_CLASS_TEXT
+                maxLines = 1
+                textSize = 13f
+            }
+            row.addView(edit)
+            container.addView(row)
+            paramEdits[key] = edit
+        }
     }
 
     private fun resetToDefaults() {
-        prefs.edit()
+        val editor = prefs.edit()
             .remove(QuickSendPrefs.VOICE_MODEL_BASE_URL)
             .remove(QuickSendPrefs.VOICE_NAME_ENCODER)
             .remove(QuickSendPrefs.VOICE_NAME_DECODER)
             .remove(QuickSendPrefs.VOICE_NAME_JOINER)
             .remove(QuickSendPrefs.VOICE_NAME_TOKENS)
-            .apply()
+            .remove(QuickSendPrefs.VOICE_DECODING_METHOD)
+            .remove(QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS)
+            .remove(QuickSendPrefs.VOICE_BLANK_PENALTY)
+            .remove(QuickSendPrefs.VOICE_ENDPOINT_SILENCE)
+            .remove(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER)
+            .remove(QuickSendPrefs.VOICE_NUM_THREADS)
+            .remove(QuickSendPrefs.VOICE_PROVIDER)
+            editor.apply()
         binding.modelUrl.setText(VoiceModelManager.DEFAULT_BASE_URL)
         binding.namesEncoder.setText(SherpaModelNames.DEFAULT_ENCODER)
         binding.namesDecoder.setText(SherpaModelNames.DEFAULT_DECODER)
         binding.namesJoiner.setText(SherpaModelNames.DEFAULT_JOINER)
         binding.namesTokens.setText(SherpaModelNames.DEFAULT_TOKENS)
+        loadParamPrefs()
         Toast.makeText(this, "已恢复默认配置", Toast.LENGTH_SHORT).show()
     }
 
