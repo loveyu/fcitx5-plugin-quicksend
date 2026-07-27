@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelHolder
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaRecognizer
 import java.io.File
@@ -55,6 +56,7 @@ class VoiceController(
 
     private var recognizer: SherpaRecognizer? = null
     private var collectJob: Job? = null
+    private var committedVoiceCharCount = 0
 
     fun start() {
         val current = _state.value
@@ -62,56 +64,64 @@ class VoiceController(
             current is VoiceUiState.Listening ||
             current is VoiceUiState.Partial
         ) return
+        if (current is VoiceUiState.Paused) {
+            VoiceLog.i(TAG, "resume from paused")
+            recognizer?.resumeRecording()
+            _state.value = VoiceUiState.Listening
+            return
+        }
         if (!VoiceModelManager.isReady(context, names)) {
             VoiceLog.w(TAG, "start aborted: model not ready at $modelDir")
             _state.value = VoiceUiState.NotReady
             return
         }
-        VoiceLog.i(TAG, "start: creating recognizer, modelDir=$modelDir")
-        val rec = SherpaRecognizer(context, modelDir, names)
-        recognizer = rec
+        VoiceLog.i(TAG, "start: loading model from holder, modelDir=$modelDir")
         _state.value = VoiceUiState.Initializing
-        collectJob?.cancel()
-        collectJob = scope.launch {
-            rec.events.collect { handle(it) }
-        }
+        committedVoiceCharCount = 0
         scope.launch(Dispatchers.IO) {
-            runCatching { rec.start() }
-                .onSuccess {
-                    VoiceLog.i(TAG, "recognizer started")
-                    if (_state.value !is VoiceUiState.Error && _state.value !is VoiceUiState.Paused) {
-                        _state.value = VoiceUiState.Listening
+            runCatching { SherpaModelHolder.getOrLoad(modelDir, names) }
+                .onSuccess { onlineRec ->
+                    VoiceLog.i(TAG, "model ready, creating recognizer")
+                    val rec = SherpaRecognizer(onlineRec)
+                    recognizer = rec
+                    collectJob?.cancel()
+                    collectJob = scope.launch {
+                        rec.events.collect { handle(it) }
                     }
+                    runCatching { rec.start() }
+                        .onSuccess {
+                            VoiceLog.i(TAG, "recognizer started")
+                            if (_state.value !is VoiceUiState.Error && _state.value !is VoiceUiState.Paused) {
+                                _state.value = VoiceUiState.Listening
+                            }
+                        }
+                        .onFailure {
+                            VoiceLog.e(TAG, "recognizer start failed", it)
+                            _state.value = VoiceUiState.Error(it.message ?: "启动识别失败")
+                        }
                 }
                 .onFailure {
-                    VoiceLog.e(TAG, "recognizer start failed", it)
-                    _state.value = VoiceUiState.Error(it.message ?: "启动识别失败")
+                    VoiceLog.e(TAG, "model load failed", it)
+                    _state.value = VoiceUiState.Error(it.message ?: "加载模型失败")
                 }
         }
     }
 
-    /** 暂停：停止录音但保留会话，可调用 [start] 恢复。 */
+    /** 暂停：停止录音但保留会话与组合文本，可调用 [start] 恢复。 */
     fun pause() {
         if (_state.value !is VoiceUiState.Initializing &&
             _state.value !is VoiceUiState.Listening &&
             _state.value !is VoiceUiState.Partial
         ) return
         VoiceLog.i(TAG, "pause requested")
-        scope.launch {
-            runCatching { recognizer?.cancel() }
-            withContext(Dispatchers.IO) {
-                val r = remote()
-                if (r != null) runCatching { r.setComposingText("") }
-                    .onFailure { VoiceLog.w(TAG, "clear composing failed", it) }
-            }
-            if (_state.value is VoiceUiState.Paused) return@launch
-            _state.value = VoiceUiState.Paused
-        }
+        recognizer?.pauseRecording()
+        _state.value = VoiceUiState.Paused
     }
 
-    /** 向后删除一个字符（发送 KEYCODE_DEL）。 */
+    /** 向后删除一个语音识别提交的字符（发送 KEYCODE_DEL）。 */
     fun backspace() {
-        VoiceLog.d(TAG, "backspace")
+        if (committedVoiceCharCount <= 0) return
+        VoiceLog.d(TAG, "backspace ($committedVoiceCharCount remaining)")
         scope.launch {
             withContext(Dispatchers.IO) {
                 val r = remote()
@@ -119,6 +129,7 @@ class VoiceController(
                     r.sendKeyDownUpKey(android.view.KeyEvent.KEYCODE_DEL, 0)
                 }.onFailure { VoiceLog.w(TAG, "backspace failed", it) }
             }
+            committedVoiceCharCount--
         }
     }
 
@@ -156,6 +167,7 @@ class VoiceController(
                             "final \"${event.text}\" → commit \"$refined\" " +
                                 if (res.isSuccess) "ok" else "fail: ${res.exceptionOrNull()}"
                         )
+                        if (res.isSuccess) committedVoiceCharCount += refined.length
                     }
                 }
                 endSession()
