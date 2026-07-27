@@ -35,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.fcitx.fcitx5.android.common.ipc.IInputWindowStateListener
 import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
 import org.fcitx.fcitx5.android.plugin.quicksend.BuildConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
@@ -67,17 +68,34 @@ class VoiceOverlayService : Service() {
     private var controller: VoiceController? = null
     private var remoteService: IQuickSendService? = null
     private var bound = false
+    private var registered = false
+
+    private val inputWindowListener = object : IInputWindowStateListener.Stub() {
+        override fun onInputWindowShown() {}
+
+        override fun onInputWindowHidden() {
+            VoiceLog.i(TAG, "input window hidden, closing voice overlay")
+            mainHandler.post { closeAndStop() }
+        }
+    }
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
             VoiceLog.i(TAG, "bound to fcitx IQuickSendService")
-            remoteService = IQuickSendService.Stub.asInterface(service)
+            val s = IQuickSendService.Stub.asInterface(service)
+            remoteService = s
+            runCatching {
+                s.registerInputWindowStateListener(inputWindowListener)
+                registered = true
+            }
             evaluateAndStart()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
             VoiceLog.w(TAG, "fcitx IQuickSendService disconnected")
+            registered = false
             remoteService = null
+            mainHandler.post { closeAndStop() }
         }
     }
 
@@ -380,6 +398,8 @@ class VoiceOverlayService : Service() {
 
     override fun onDestroy() {
         VoiceLog.i(TAG, "onDestroy")
+        runCatching { if (registered) remoteService?.unregisterInputWindowStateListener(inputWindowListener) }
+        registered = false
         controller?.destroy()
         controller = null
         removeOverlay()
