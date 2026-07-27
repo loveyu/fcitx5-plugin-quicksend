@@ -9,8 +9,8 @@ import java.io.File
 /**
  * Sherpa 流式 Zipformer-transducer 模型的 4 个必需文件名。
  *
- * 默认对应 `sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23`（中文，14M）的 int8 量化版，
- * 体积更小、更适合移动端。文件名可在设置页"高级"中覆盖以适配其它流式模型。
+ * 默认对应 `sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`（中文，Large，14k 小时训练），
+ * int8 量化版兼顾体积与精度。文件名可在设置页"高级"中覆盖以适配其它流式模型。
  */
 data class SherpaModelNames(
     val encoder: String = DEFAULT_ENCODER,
@@ -22,9 +22,9 @@ data class SherpaModelNames(
     fun all(): List<String> = listOf(encoder, decoder, joiner, tokens)
 
     companion object {
-        const val DEFAULT_ENCODER = "encoder-epoch-99-avg-1.int8.onnx"
-        const val DEFAULT_DECODER = "decoder-epoch-99-avg-1.int8.onnx"
-        const val DEFAULT_JOINER = "joiner-epoch-99-avg-1.int8.onnx"
+        const val DEFAULT_ENCODER = "encoder.int8.onnx"
+        const val DEFAULT_DECODER = "decoder.onnx"
+        const val DEFAULT_JOINER = "joiner.int8.onnx"
         const val DEFAULT_TOKENS = "tokens.txt"
     }
 }

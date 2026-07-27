@@ -16,10 +16,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.ProxyConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.VoiceHttp
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelFiles
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
 
@@ -36,19 +40,18 @@ sealed interface DownloadState {
 /**
  * 运行时下载 + 管理 Sherpa 中文流式模型。
  *
- * 默认保存目录：应用专用外部目录 `sherpa/zh-14m/`。
- * 下载源为用户可配置的 HTTP base URL（默认 HuggingFace），逐文件流式下载，
- * 全部完成后校验 4 个文件并写就绪状态。
+ * 默认下载 `.tar.bz2` 压缩包（GitHub Releases），解压到 `sherpa/zh-large-2025/`。
+ * 同时也兼容旧版逐文件下载（HuggingFace base URL）。
  */
 object VoiceModelManager {
 
     private const val TAG = "VoiceModel"
 
-    const val MODEL_DIR_NAME = "sherpa/zh-14m"
+    const val MODEL_DIR_NAME = "sherpa/zh-large-2025"
 
-    /** 默认下载源（HuggingFace）。用户可在设置页改为镜像。 */
+    /** 默认下载源（GitHub Releases .tar.bz2）。用户可在设置页改为镜像或 HuggingFace URL。 */
     const val DEFAULT_BASE_URL =
-        "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/main"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30.tar.bz2"
 
     fun modelDir(context: Context): File =
         File(context.getExternalFilesDir(null) ?: context.filesDir, MODEL_DIR_NAME)
@@ -74,7 +77,13 @@ object VoiceModelManager {
         )
         job = scope.launch {
             _state.value = DownloadState.Downloading(0)
-            runCatching { doDownload(context, baseUrl.trimEnd('/'), names, proxy) }
+            runCatching {
+                if (baseUrl.endsWith(".tar.bz2", ignoreCase = true)) {
+                    downloadAndExtractTarBz2(context, baseUrl, names, proxy)
+                } else {
+                    downloadIndividualFiles(context, baseUrl.trimEnd('/'), names, proxy)
+                }
+            }
                 .onSuccess {
                     val ready = isReady(context, names)
                     _state.value = if (ready) DownloadState.Ready
@@ -109,7 +118,62 @@ object VoiceModelManager {
         }
     }
 
-    private suspend fun doDownload(
+    private suspend fun downloadAndExtractTarBz2(
+        context: Context,
+        url: String,
+        names: SherpaModelNames,
+        proxy: ProxyConfig
+    ) {
+        val dir = modelDir(context)
+        dir.mkdirs()
+        val client = VoiceHttp.client(proxy)
+        val total = contentLength(client, url).coerceAtLeast(1L)
+        VoiceLog.i(TAG, "download tar.bz2: $url, total≈$total bytes → ${dir.absolutePath}")
+
+        val tmp = File(dir, "model.tar.bz2.part")
+        var downloaded = 0L
+        streamToFile(client, url, tmp) { delta ->
+            downloaded += delta
+            val pct = (downloaded * 100 / total).toInt().coerceIn(0, 100)
+            _state.value = DownloadState.Downloading(pct)
+        }
+        VoiceLog.i(TAG, "download done (${tmp.length()} bytes), extracting...")
+
+        try {
+            extractTarBz2(tmp, dir, names)
+            VoiceLog.i(TAG, "extraction complete")
+        } finally {
+            runCatching { tmp.delete() }
+        }
+    }
+
+    /** 解压 .tar.bz2 → [destDir]，跳过顶层目录名，仅提取 [names.all()] 中的文件。 */
+    private fun extractTarBz2(archive: File, destDir: File, names: SherpaModelNames) {
+        val wanted = names.all().toSet()
+        var found = 0
+        BZip2CompressorInputStream(BufferedInputStream(archive.inputStream())).use { bzIn ->
+            TarArchiveInputStream(bzIn).use { tarIn ->
+                while (true) {
+                    val entry: TarArchiveEntry = tarIn.nextEntry ?: break
+                    if (entry.isDirectory) continue
+                    val name = File(entry.name).name
+                    if (name !in wanted) continue
+                    // 跳过顶层目录：entry.name 形如 "sherpa-onnx-.../encoder.int8.onnx"
+                    val target = File(destDir, name)
+                    target.outputStream().use { out ->
+                        tarIn.copyTo(out)
+                    }
+                    found++
+                    VoiceLog.d(TAG, "extracted: $name → ${target.absolutePath} (${target.length()} bytes)")
+                }
+            }
+        }
+        if (found < wanted.size) {
+            throw IOException("Archive missing files: expected $wanted, found $found")
+        }
+    }
+
+    private suspend fun downloadIndividualFiles(
         context: Context,
         baseUrl: String,
         names: SherpaModelNames,
@@ -118,7 +182,6 @@ object VoiceModelManager {
         val dir = modelDir(context)
         dir.mkdirs()
         val client = VoiceHttp.client(proxy)
-        // 先 HEAD 汇总各文件大小用于进度（不可得则为 0 → 进度不可知）
         val total = names.all().sumOf { contentLength(client, "$baseUrl/$it") }.coerceAtLeast(1L)
         VoiceLog.i(TAG, "download: ${names.all().size} files, total≈$total bytes → ${dir.absolutePath}")
         var downloaded = 0L

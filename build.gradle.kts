@@ -115,6 +115,9 @@ dependencies {
     // 网络：模型下载 + 后续在线 Provider / AI 润色统一走 OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    // tar.bz2 解压：Sherpa 模型从 GitHub Releases 以 .tar.bz2 分发
+    implementation("org.apache.commons:commons-compress:1.27.1")
+
     testImplementation("junit:junit:4.13.2")
 }
 
