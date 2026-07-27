@@ -49,7 +49,7 @@ CI（`.github/workflows/build.yml`）的 `Replace mirror sources` 步骤做这�
 优先级（高→低）：环境变量 > 文件 > 兜底。
 
 - 环境变量：`PLUGIN_VERSION`（versionName）、`PLUGIN_VERSION_CODE`（versionCode）。
-- 文件：`version.properties`（入库，当前 `0.5.1` / `1000005`）可被 gitignore 的 `version.local.properties` 覆盖。
+- 文件：`version.properties`（入库，当前 `0.7.3` / `1000012`）可被 gitignore 的 `version.local.properties` 覆盖。
 - 兜底：`0.1.0` / `1000000`。
 
 CI release 用 git tag 名作 `PLUGIN_VERSION`（如 tag `v0.5.1` → versionName `v0.5.1`）。发布流程见 commit `cc44ae1` 等。
