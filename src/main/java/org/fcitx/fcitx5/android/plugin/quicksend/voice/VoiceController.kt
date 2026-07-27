@@ -29,7 +29,7 @@ sealed interface VoiceUiState {
     object Initializing : VoiceUiState
     object Listening : VoiceUiState
     data class Partial(val text: String) : VoiceUiState
-    object Paused : VoiceUiState
+    data class Paused(val text: String) : VoiceUiState
     object Finishing : VoiceUiState
     data class Error(val message: String) : VoiceUiState
     /** 模型未就绪。 */
@@ -57,6 +57,8 @@ class VoiceController(
     private var recognizer: SherpaRecognizer? = null
     private var collectJob: Job? = null
     private var committedVoiceCharCount = 0
+    private var partialBackspaceOffset = 0
+    private var rawPartialText = ""
 
     fun start() {
         val current = _state.value
@@ -78,6 +80,8 @@ class VoiceController(
         VoiceLog.i(TAG, "start: loading model from holder, modelDir=$modelDir")
         _state.value = VoiceUiState.Initializing
         committedVoiceCharCount = 0
+        partialBackspaceOffset = 0
+        rawPartialText = ""
         scope.launch(Dispatchers.IO) {
             runCatching { SherpaModelHolder.getOrLoad(modelDir, names) }
                 .onSuccess { onlineRec ->
@@ -109,17 +113,45 @@ class VoiceController(
 
     /** 暂停：停止录音但保留会话与组合文本，可调用 [start] 恢复。 */
     fun pause() {
-        if (_state.value !is VoiceUiState.Initializing &&
-            _state.value !is VoiceUiState.Listening &&
-            _state.value !is VoiceUiState.Partial
+        val current = _state.value
+        if (current !is VoiceUiState.Initializing &&
+            current !is VoiceUiState.Listening &&
+            current !is VoiceUiState.Partial
         ) return
         VoiceLog.i(TAG, "pause requested")
         recognizer?.pauseRecording()
-        _state.value = VoiceUiState.Paused
+        val text = (current as? VoiceUiState.Partial)?.text.orEmpty()
+        _state.value = VoiceUiState.Paused(text)
     }
 
-    /** 向后删除一个语音识别提交的字符（发送 KEYCODE_DEL）。 */
+    /** 向后删除一个语音识别字符。
+     * 流式阶段：递增偏移量并截断组合文本与叠加层显示；
+     * 提交后：发送 KEYCODE_DEL 到输入框。 */
     fun backspace() {
+        val current = _state.value
+        if (current is VoiceUiState.Partial || current is VoiceUiState.Paused) {
+            if (rawPartialText.isEmpty()) return
+            partialBackspaceOffset++
+            val adjusted = rawPartialText.dropLast(
+                minOf(partialBackspaceOffset, rawPartialText.length)
+            )
+            VoiceLog.d(TAG, "backspace during stream: offset=$partialBackspaceOffset adjusted=\"$adjusted\"")
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    val r = remote()
+                    if (r != null) runCatching {
+                        r.setComposingText(adjusted)
+                    }.onFailure { VoiceLog.w(TAG, "backspace composing update failed", it) }
+                }
+                val now = _state.value
+                _state.value = if (now is VoiceUiState.Paused) {
+                    VoiceUiState.Paused(adjusted)
+                } else {
+                    VoiceUiState.Partial(adjusted)
+                }
+            }
+            return
+        }
         if (committedVoiceCharCount <= 0) return
         VoiceLog.d(TAG, "backspace ($committedVoiceCharCount remaining)")
         scope.launch {
@@ -136,24 +168,35 @@ class VoiceController(
     private suspend fun handle(event: RecognitionEvent) {
         when (event) {
             is RecognitionEvent.Partial -> {
-                _state.value = VoiceUiState.Partial(event.text)
+                rawPartialText = event.text
+                val adjusted = if (partialBackspaceOffset > 0) {
+                    rawPartialText.dropLast(minOf(partialBackspaceOffset, rawPartialText.length))
+                } else {
+                    rawPartialText
+                }
+                _state.value = VoiceUiState.Partial(adjusted)
                 withContext(Dispatchers.IO) {
                     val r = remote()
                     if (r == null) {
-                        VoiceLog.w(TAG, "partial ignored (no remote): \"${event.text}\"")
+                        VoiceLog.w(TAG, "partial ignored (no remote): \"$adjusted\"")
                     } else {
-                        val res = runCatching { r.setComposingText(event.text) }
+                        val res = runCatching { r.setComposingText(adjusted) }
                         VoiceLog.d(
                             TAG,
-                            "partial \"${event.text}\" → setComposingText " +
+                            "partial \"${event.text}\" → setComposingText \"$adjusted\" " +
                                 if (res.isSuccess) "ok" else "fail: ${res.exceptionOrNull()}"
                         )
                     }
                 }
             }
             is RecognitionEvent.Final -> {
+                val adjustedFinal = if (partialBackspaceOffset > 0) {
+                    event.text.dropLast(minOf(partialBackspaceOffset, event.text.length))
+                } else {
+                    event.text
+                }
                 val refined = withContext(Dispatchers.Default) {
-                    runCatching { refiner.refine(event.text) }.getOrDefault(event.text)
+                    runCatching { refiner.refine(adjustedFinal) }.getOrDefault(adjustedFinal)
                 }
                 _state.value = VoiceUiState.Finishing
                 withContext(Dispatchers.IO) {

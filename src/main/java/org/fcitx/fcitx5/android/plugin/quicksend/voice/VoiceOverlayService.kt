@@ -162,7 +162,6 @@ class VoiceOverlayService : Service() {
                 finishBtn?.visibility = View.VISIBLE
             }
             VoiceUiState.Listening -> {
-                pt.text = ""
                 st.text = getString(R.string.voice_listening)
                 pauseBtn?.text = getString(R.string.voice_pause)
                 backspaceBtn?.visibility = View.VISIBLE
@@ -175,7 +174,8 @@ class VoiceOverlayService : Service() {
                 backspaceBtn?.visibility = View.VISIBLE
                 finishBtn?.visibility = View.VISIBLE
             }
-            VoiceUiState.Paused -> {
+            is VoiceUiState.Paused -> {
+                pt.text = state.text
                 st.text = getString(R.string.voice_paused)
                 pauseBtn?.text = getString(R.string.voice_resume)
                 backspaceBtn?.visibility = View.VISIBLE
