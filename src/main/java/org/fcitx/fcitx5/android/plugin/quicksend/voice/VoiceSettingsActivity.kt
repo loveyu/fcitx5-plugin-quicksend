@@ -52,6 +52,7 @@ class VoiceSettingsActivity : Activity() {
             VoiceModelManager.delete(this, names())
             updateState(VoiceModelManager.state.value)
         }
+        binding.resetButton.setOnClickListener { resetToDefaults() }
 
         // 调试日志：展示路径 + 分享（便于用户复制上报）
         binding.logPath.text = VoiceLog.path(this)
@@ -141,6 +142,22 @@ class VoiceSettingsActivity : Activity() {
             .putString(QuickSendPrefs.VOICE_NAME_JOINER, n.joiner)
             .putString(QuickSendPrefs.VOICE_NAME_TOKENS, n.tokens)
             .apply()
+    }
+
+    private fun resetToDefaults() {
+        prefs.edit()
+            .remove(QuickSendPrefs.VOICE_MODEL_BASE_URL)
+            .remove(QuickSendPrefs.VOICE_NAME_ENCODER)
+            .remove(QuickSendPrefs.VOICE_NAME_DECODER)
+            .remove(QuickSendPrefs.VOICE_NAME_JOINER)
+            .remove(QuickSendPrefs.VOICE_NAME_TOKENS)
+            .apply()
+        binding.modelUrl.setText(VoiceModelManager.DEFAULT_BASE_URL)
+        binding.namesEncoder.setText(SherpaModelNames.DEFAULT_ENCODER)
+        binding.namesDecoder.setText(SherpaModelNames.DEFAULT_DECODER)
+        binding.namesJoiner.setText(SherpaModelNames.DEFAULT_JOINER)
+        binding.namesTokens.setText(SherpaModelNames.DEFAULT_TOKENS)
+        Toast.makeText(this, "已恢复默认配置", Toast.LENGTH_SHORT).show()
     }
 
     private fun shareLog() {

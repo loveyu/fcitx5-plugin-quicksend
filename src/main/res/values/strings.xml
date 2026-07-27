@@ -74,7 +74,8 @@
     <string name="voice_download">下载模型</string>
     <string name="voice_redownload">重新下载</string>
     <string name="voice_delete_model">删除模型</string>
-    <string name="voice_proxy_section">代理（可选，用于访问 HuggingFace）</string>
+    <string name="voice_reset_model">重置默认</string>
+    <string name="voice_proxy_section">代理（可选，用于访问模型下载源）</string>
     <string name="voice_proxy_uri">代理 URI，如 http://127.0.0.1:7890</string>
     <string name="voice_proxy_examples">示例：http://127.0.0.1:7890 或 socks5://user:pass@host:1080；留空则不使用代理</string>
     <string name="voice_advanced_section">高级（模型文件名，留空用默认）</string>
