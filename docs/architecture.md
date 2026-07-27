@@ -39,8 +39,20 @@ bindService(.plugin.SERVICE, perm.PLUGIN) ──▶ MainService.onBind()
 | `MainService` | 被 host bind 的插件 Service；反向绑定 host；自带 overlay 自恢复 |
 | `RemoteServiceHolder` | 持有 `IQuickSendService` 代理（`@Volatile`）的全局单例 |
 | `QuickSendOverlayService` | 软键盘可见时显示边缘按钮；订阅 `IInputWindowStateListener` 控制显隐；点开列表→发送。需 `SYSTEM_ALERT_WINDOW` |
-| `VoiceOverlayService` | 语音前台服务（microphone 类型）；绑定 host、校验权限/模型、驱动 `VoiceController` |
+| `VoiceOverlayService` | 语音前台服务（microphone 类型）；绑定 host、校验权限/模型、驱动 `VoiceController`；支持暂停/恢复/退格 |
 | `OverlayRestarter` | 解决 APK 更新后系统清除 `QuickSendOverlayService` 重启计划的问题；在进程创建与 MainService 绑定两个时机自恢复 |
+
+### 语音子系统概要
+
+详见 [`voice-subsystem.md`](voice-subsystem.md)。关键组件：
+
+| 类 | 角色 |
+|----|------|
+| `VoiceController` | 编排识别会话，暴露 `VoiceUiState` 流（`Idle/Initializing/Listening/Partial/Paused/Finishing/Error/NotReady`），管理 compose/text 注入与退格追踪 |
+| `SherpaModelHolder` | 进程级单例，`OnlineRecognizer` 只加载一次，插件不销毁则常驻内存 |
+| `SherpaRecognizer` | 按预加载模型创建 stream + AudioRecord，暂停/恢复保留 stream 零延迟 |
+| `VoiceModelManager` | 模型文件下载/校验（HuggingFace，可换源/代理） |
+| `VoiceLog` | 调试日志，2MB 自动轮转 |
 
 ## 数据层（QuickSend）
 
