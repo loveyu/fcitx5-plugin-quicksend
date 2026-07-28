@@ -4,6 +4,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -14,6 +16,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -61,8 +64,57 @@ class QuickSendOverlayService : android.app.Service() {
     private var adapter: ArrayAdapter<QuickSendEntry>? = null
     private var collectJob: Job? = null
 
+    private var buttonGravity = Gravity.END or Gravity.BOTTOM
+    private var buttonX = -1
+    private var buttonY = -1
+    private var positionLoaded = false
+
+    private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
+    private var dragStartLayoutX = 0
+    private var dragStartLayoutY = 0
+    private var hasMoved = false
+
     private var remoteService: IQuickSendService? = null
     private var registered = false
+
+    private val prefs by lazy { getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE) }
+
+    private val colorKeys = setOf(
+        QuickSendPrefs.OVERLAY_BG_COLOR,
+        QuickSendPrefs.OVERLAY_TEXT_COLOR,
+        QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT,
+        QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT
+    )
+
+    private val prefsChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key in colorKeys) {
+            buttonView?.let { mainHandler.post { applyButtonColors(it as TextView) } }
+        }
+    }
+
+    private fun isNightMode(): Boolean =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+    private fun resolveButtonColors(): Pair<Int, Int> {
+        val isNight = isNightMode()
+        val bgKey = if (isNight) QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT else QuickSendPrefs.OVERLAY_BG_COLOR
+        val textKey = if (isNight) QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT else QuickSendPrefs.OVERLAY_TEXT_COLOR
+        val bg = prefs.getInt(bgKey, QuickSendPrefs.DEFAULT_BG_COLOR)
+        val text = prefs.getInt(textKey, QuickSendPrefs.DEFAULT_TEXT_COLOR)
+        return bg to text
+    }
+
+    private fun applyButtonColors(btn: TextView) {
+        val (bg, text) = resolveButtonColors()
+        btn.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(bg)
+            val size = dp(48)
+            setSize(size, size)
+        }
+        btn.setTextColor(text)
+    }
 
     /** 由主项目回调（binder 线程），转发到主线程操作窗口视图。 */
     private val listener = object : IInputWindowStateListener.Stub() {
@@ -103,7 +155,7 @@ class QuickSendOverlayService : android.app.Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as? WindowManager
-        // 订阅输入法可见性：收到 onWindowShown 才显示按钮。
+        prefs.registerOnSharedPreferenceChangeListener(prefsChangeListener)
         runCatching {
             bindService(
                 Intent("$fcitxAppId.quicksend.IPC").setPackage(fcitxAppId),
@@ -124,6 +176,7 @@ class QuickSendOverlayService : android.app.Service() {
 
     override fun onDestroy() {
         removeAll()
+        runCatching { prefs.unregisterOnSharedPreferenceChangeListener(prefsChangeListener) }
         runCatching { if (registered) remoteService?.unregisterInputWindowStateListener(listener) }
         registered = false
         runCatching { if (remoteService != null) unbindService(connection) }
@@ -135,16 +188,22 @@ class QuickSendOverlayService : android.app.Service() {
     private fun showButton() {
         if (buttonView != null) return
         val wm = windowManager ?: return
+        if (!positionLoaded) loadPosition()
+
         val btn = TextView(this).apply {
-            text = getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE)
-                .getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT)
-            setTextColor(Color.WHITE)
+            text = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             gravity = Gravity.CENTER
-            setBackgroundResource(R.drawable.overlay_button_bg)
             val p = dp(14)
             setPadding(p, p, p, p)
         }
+        val (bgColor, textColor) = resolveButtonColors()
+        btn.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(bgColor)
+            setSize(dp(48), dp(48))
+        }
+        btn.setTextColor(textColor)
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -152,12 +211,11 @@ class QuickSendOverlayService : android.app.Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            x = dp(6)
+            gravity = buttonGravity
+            x = buttonX
+            y = buttonY
         }
-        btn.setOnClickListener {
-            if (listPopup != null) hideList() else showList()
-        }
+        btn.setOnTouchListener { view, event -> onButtonTouch(view, event) }
         runCatching { wm.addView(btn, lp) }
         buttonView = btn
 
@@ -173,6 +231,99 @@ class QuickSendOverlayService : android.app.Service() {
         buttonView = null
         collectJob?.cancel()
         collectJob = null
+    }
+
+    private fun loadPosition() {
+        positionLoaded = true
+        val prefs = getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE)
+        buttonGravity = prefs.getInt(QuickSendPrefs.OVERLAY_GRAVITY, Gravity.END or Gravity.BOTTOM)
+        buttonX = prefs.getInt(QuickSendPrefs.OVERLAY_X, dp(6))
+        buttonY = prefs.getInt(QuickSendPrefs.OVERLAY_Y, dp(40))
+    }
+
+    private fun savePosition() {
+        getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE).edit()
+            .putInt(QuickSendPrefs.OVERLAY_GRAVITY, buttonGravity)
+            .putInt(QuickSendPrefs.OVERLAY_X, buttonX)
+            .putInt(QuickSendPrefs.OVERLAY_Y, buttonY)
+            .apply()
+    }
+
+    private fun onButtonTouch(view: View, event: MotionEvent): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                dragStartRawX = event.rawX
+                dragStartRawY = event.rawY
+                hasMoved = false
+                val location = IntArray(2)
+                view.getLocationOnScreen(location)
+                val lp = view.layoutParams as WindowManager.LayoutParams
+                lp.gravity = Gravity.START or Gravity.TOP
+                lp.x = location[0]
+                lp.y = location[1]
+                windowManager?.updateViewLayout(view, lp)
+                dragStartLayoutX = location[0]
+                dragStartLayoutY = location[1]
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = (event.rawX - dragStartRawX).toInt()
+                val dy = (event.rawY - dragStartRawY).toInt()
+                if (!hasMoved && (Math.abs(dx) > dp(4) || Math.abs(dy) > dp(4))) {
+                    hasMoved = true
+                }
+                if (hasMoved) {
+                    val lp = view.layoutParams as WindowManager.LayoutParams
+                    lp.x = dragStartLayoutX + dx
+                    lp.y = dragStartLayoutY + dy
+                    windowManager?.updateViewLayout(view, lp)
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (hasMoved) {
+                    finalizePosition(view)
+                } else {
+                    if (listPopup != null) hideList() else showList()
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                finalizePosition(view)
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun finalizePosition(view: View) {
+        val location = IntArray(2)
+        view.getLocationOnScreen(location)
+        val w = view.width
+        val h = view.height
+        if (w <= 0 || h <= 0) return
+
+        val centerX = location[0] + w / 2
+        val centerY = location[1] + h / 2
+
+        val metrics = resources.displayMetrics
+        val screenW = metrics.widthPixels
+        val screenH = metrics.heightPixels
+
+        val gravX = if (centerX < screenW / 2) Gravity.START else Gravity.END
+        val gravY = if (centerY < screenH / 4) Gravity.TOP else Gravity.BOTTOM
+
+        buttonX = if (gravX == Gravity.START) location[0] else screenW - (location[0] + w)
+        buttonY = if (gravY == Gravity.TOP) location[1] else screenH - (location[1] + h)
+        buttonGravity = gravX or gravY
+
+        val lp = view.layoutParams as WindowManager.LayoutParams
+        lp.gravity = buttonGravity
+        lp.x = buttonX
+        lp.y = buttonY
+        windowManager?.updateViewLayout(view, lp)
+
+        savePosition()
     }
 
     private fun showList() {
@@ -268,17 +419,45 @@ class QuickSendOverlayService : android.app.Service() {
             )
         }
 
-        val lp = WindowManager.LayoutParams(
-            dp(280),
-            dp(420),
+        val btnLoc = IntArray(2)
+        buttonView?.getLocationOnScreen(btnLoc)
+        val btnW = buttonView?.width?.takeIf { it > 0 } ?: dp(76)
+        val btnH = buttonView?.height?.takeIf { it > 0 } ?: dp(76)
+        val btnCenterX = btnLoc[0] + btnW / 2
+        val btnCenterY = btnLoc[1] + btnH / 2
+
+        val d = resources.displayMetrics
+        val screenW = d.widthPixels
+        val screenH = d.heightPixels
+
+        val margin = dp(6)
+        val popupW = dp(280)
+        val popupH = dp(420)
+        val isLeftSide = btnCenterX < screenW / 2
+
+        val px: Int
+        val popupGravX: Int
+        if (isLeftSide) {
+            popupGravX = Gravity.START
+            px = btnLoc[0] + btnW + margin
+        } else {
+            popupGravX = Gravity.END
+            px = screenW - btnLoc[0] + margin
+        }
+        val py = (btnCenterY - popupH / 2).coerceIn(0, screenH - popupH)
+
+        val popupLp = WindowManager.LayoutParams(
+            popupW,
+            popupH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            x = dp(6)
+            gravity = popupGravX or Gravity.TOP
+            x = px
+            y = py
         }
-        runCatching { wm.addView(container, lp) }
+        runCatching { wm.addView(container, popupLp) }
         listPopup = container
     }
 

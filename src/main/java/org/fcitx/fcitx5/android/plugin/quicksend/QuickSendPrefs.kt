@@ -15,6 +15,31 @@ object QuickSendPrefs {
     const val BUTTON_TEXT = "button_text"
     const val BUTTON_TEXT_DEFAULT = "发"
 
+    /** 悬浮按钮拖拽后的位置：gravity（Gravity.START/END + TOP/BOTTOM） */
+    const val OVERLAY_GRAVITY = "overlay_gravity"
+
+    /** 悬浮按钮 x 偏移（px，相对水平锚点边） */
+    const val OVERLAY_X = "overlay_x"
+
+    /** 悬浮按钮 y 偏移（px，相对垂直锚点边） */
+    const val OVERLAY_Y = "overlay_y"
+
+    /** 悬浮按钮背景色 (ARGB)，日间模式 */
+    const val OVERLAY_BG_COLOR = "overlay_bg_color"
+
+    /** 悬浮按钮文字色 (ARGB)，日间模式 */
+    const val OVERLAY_TEXT_COLOR = "overlay_text_color"
+
+    /** 悬浮按钮背景色 (ARGB)，夜间模式 */
+    const val OVERLAY_BG_COLOR_NIGHT = "overlay_bg_color_night"
+
+    /** 悬浮按钮文字色 (ARGB)，夜间模式 */
+    const val OVERLAY_TEXT_COLOR_NIGHT = "overlay_text_color_night"
+
+    /** 默认背景色 #E61976D2，默认文字色白色 */
+    const val DEFAULT_BG_COLOR = 0xE61976D2.toInt()
+    const val DEFAULT_TEXT_COLOR = 0xFFFFFFFF.toInt()
+
     // ===== 语音输入 =====
 
     /** 模型下载 base URL（默认 HuggingFace，可改镜像） */

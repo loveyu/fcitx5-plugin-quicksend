@@ -117,4 +117,20 @@
     <string name="voice_share_log">分享日志</string>
     <string name="voice_log_share_title">分享语音日志</string>
     <string name="voice_log_unavailable">日志文件暂不可用</string>
+
+    <!-- 颜色选择 -->
+    <string name="color_picker_title">选择颜色</string>
+    <string name="color_hue">色调</string>
+    <string name="color_saturation">饱和度</string>
+    <string name="color_brightness">亮度</string>
+    <string name="color_alpha">透明度</string>
+    <string name="color_presets">快速预设 (20 组)</string>
+
+    <!-- 按钮外观 -->
+    <string name="btn_appearance">按钮外观</string>
+    <string name="btn_bg_color">背景色</string>
+    <string name="btn_text_color">文字色</string>
+    <string name="btn_light_mode">日间模式</string>
+    <string name="btn_dark_mode">夜间模式</string>
+    <string name="btn_preset_button">快速选择预设方案</string>
 </resources>
