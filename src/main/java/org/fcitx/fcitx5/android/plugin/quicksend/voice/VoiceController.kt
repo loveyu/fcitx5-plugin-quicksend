@@ -4,7 +4,6 @@
  */
 package org.fcitx.fcitx5.android.plugin.quicksend.voice
 
-import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,14 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
-import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelHolder
-import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
-import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaRecognizer
-import java.io.File
 
-/**
- * 浮层语音状态。
- */
 sealed interface VoiceUiState {
     object Idle : VoiceUiState
     object Initializing : VoiceUiState
@@ -32,22 +24,12 @@ sealed interface VoiceUiState {
     data class Paused(val text: String) : VoiceUiState
     object Finishing : VoiceUiState
     data class Error(val message: String) : VoiceUiState
-    /** 模型未就绪。 */
     object NotReady : VoiceUiState
 }
 
-/**
- * 编排一次语音会话：驱动 [SpeechRecognizer]，把 Partial 流式写进输入框组合区、
- * Final 经 [TextRefiner] 后提交；cancel 清空组合区。
- *
- * 文本注入经 [remote]（主项目 [IQuickSendService]）跨进程完成。
- */
 class VoiceController(
-    private val context: Context,
-    private val modelDir: File,
+    private val recognizerFactory: suspend () -> SpeechRecognizer,
     private val remote: () -> IQuickSendService?,
-    private val names: SherpaModelNames = SherpaModelNames(),
-    private val config: RecognitionConfig = RecognitionConfig(),
     private val refiner: TextRefiner = NoOpRefiner,
     private val onSessionEnd: () -> Unit = {}
 ) {
@@ -55,7 +37,7 @@ class VoiceController(
     private val _state = MutableStateFlow<VoiceUiState>(VoiceUiState.Idle)
     val state: StateFlow<VoiceUiState> = _state.asStateFlow()
 
-    private var recognizer: SherpaRecognizer? = null
+    private var recognizer: SpeechRecognizer? = null
     private var collectJob: Job? = null
     private var committedVoiceCharCount = 0
     private var partialBackspaceOffset = 0
@@ -73,21 +55,15 @@ class VoiceController(
             _state.value = VoiceUiState.Listening
             return
         }
-        if (!VoiceModelManager.isReady(context, names)) {
-            VoiceLog.w(TAG, "start aborted: model not ready at $modelDir")
-            _state.value = VoiceUiState.NotReady
-            return
-        }
-        VoiceLog.i(TAG, "start: loading model from holder, modelDir=$modelDir")
+        VoiceLog.i(TAG, "start: creating recognizer")
         _state.value = VoiceUiState.Initializing
         committedVoiceCharCount = 0
         partialBackspaceOffset = 0
         rawPartialText = ""
         scope.launch(Dispatchers.IO) {
-            runCatching { SherpaModelHolder.getOrLoad(modelDir, names, config) }
-                .onSuccess { onlineRec ->
-                    VoiceLog.i(TAG, "model ready, creating recognizer")
-                    val rec = SherpaRecognizer(onlineRec)
+            runCatching { recognizerFactory() }
+                .onSuccess { rec ->
+                    VoiceLog.i(TAG, "recognizer created")
                     recognizer = rec
                     collectJob?.cancel()
                     collectJob = scope.launch {
@@ -106,13 +82,12 @@ class VoiceController(
                         }
                 }
                 .onFailure {
-                    VoiceLog.e(TAG, "model load failed", it)
-                    _state.value = VoiceUiState.Error(it.message ?: "加载模型失败")
+                    VoiceLog.e(TAG, "recognizer creation failed", it)
+                    _state.value = VoiceUiState.Error(it.message ?: "创建识别器失败")
                 }
         }
     }
 
-    /** 暂停：停止录音但保留会话与组合文本，可调用 [start] 恢复。 */
     fun pause() {
         val current = _state.value
         if (current !is VoiceUiState.Initializing &&
@@ -125,9 +100,6 @@ class VoiceController(
         _state.value = VoiceUiState.Paused(text)
     }
 
-    /** 向后删除一个语音识别字符。
-     * 流式阶段：递增偏移量并截断组合文本与叠加层显示；
-     * 提交后：发送 KEYCODE_DEL 到输入框。 */
     fun backspace() {
         val current = _state.value
         if (current is VoiceUiState.Partial || current is VoiceUiState.Paused) {
@@ -223,7 +195,6 @@ class VoiceController(
         }
     }
 
-    /** 完成：停止识别并提交最终结果，结束后关闭会话。 */
     fun finish() {
         VoiceLog.i(TAG, "finish requested")
         scope.launch {
@@ -234,7 +205,6 @@ class VoiceController(
         }
     }
 
-    /** 关闭：丢弃未提交结果并结束会话。 */
     fun close() {
         VoiceLog.i(TAG, "close requested")
         scope.launch {
@@ -248,7 +218,6 @@ class VoiceController(
         }
     }
 
-    /** @deprecated 保留兼容，使用 [close] 代替。 */
     fun cancel() = close()
 
     private fun endSession() {
@@ -257,7 +226,6 @@ class VoiceController(
         onSessionEnd()
     }
 
-    /** 服务销毁时强制释放（同步、幂等）。 */
     fun destroy() {
         VoiceLog.i(TAG, "destroy")
         collectJob?.cancel()

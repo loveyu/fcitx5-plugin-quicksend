@@ -157,13 +157,13 @@ class SherpaRecognizer(
         }
     }
 
-    fun pauseRecording() {
+    override fun pauseRecording() {
         if (!started || paused) return
         VoiceLog.i(TAG, "pauseRecording")
         paused = true
     }
 
-    fun resumeRecording() {
+    override fun resumeRecording() {
         if (!started || !paused) return
         VoiceLog.i(TAG, "resumeRecording")
         paused = false
@@ -199,7 +199,7 @@ class SherpaRecognizer(
      * 同步强制释放（不等待识别循环产出结果）。用于服务销毁等不可挂起的场景，幂等。
      * 仅释放 stream + AudioRecord，不释放共享的 [onlineRec]（由 [SherpaModelHolder] 管理）。
      */
-    fun releaseNow() {
+    override fun releaseNow() {
         VoiceLog.i(TAG, "releaseNow")
         commitFinal = false
         running = false

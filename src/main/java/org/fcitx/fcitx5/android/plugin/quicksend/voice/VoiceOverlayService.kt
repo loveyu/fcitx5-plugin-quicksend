@@ -27,7 +27,6 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -40,15 +39,12 @@ import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
 import org.fcitx.fcitx5.android.plugin.quicksend.BuildConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteSpeechRecognizer
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelHolder
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaRecognizer
 import java.io.File
 
-/**
- * 语音输入浮层服务。由主程序点语音按钮后 `startForegroundService(START)` 启动：
- * 绑定主项目 [IQuickSendService] → 校验录音权限与模型就绪 → 弹出浮层并驱动 [VoiceController]
- * 进行本地流式识别（partial 进输入框组合区，完成提交）。前台服务 + microphone 类型满足
- * Android 14 后台录音要求。导出 + 签名 permission.PLUGIN 保护，仅同签名主程序可启动。
- */
 class VoiceOverlayService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -115,7 +111,6 @@ class VoiceOverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        // 绑定主项目 IQuickSendService（action 与 QuickSendOverlayService 一致）
         if (!bound) {
             bound = runCatching {
                 bindService(
@@ -134,42 +129,60 @@ class VoiceOverlayService : Service() {
     private fun evaluateAndStart() {
         if (overlayView == null) return
         if (controller != null) return
-        when {
-            !hasRecordAudio() -> {
-                VoiceLog.w(TAG, "evaluate: RECORD_AUDIO not granted")
-                showPrompt(getString(R.string.voice_need_record_permission))
-            }
-            !VoiceModelManager.isReady(this) -> {
-                VoiceLog.w(TAG, "evaluate: model not ready")
-                showPrompt(getString(R.string.voice_model_not_ready))
-            }
-            else -> {
-                VoiceLog.i(TAG, "evaluate: ok, starting voice")
-                startVoice()
-            }
+        if (!hasRecordAudio()) {
+            VoiceLog.w(TAG, "evaluate: RECORD_AUDIO not granted")
+            showPrompt(getString(R.string.voice_need_record_permission))
+            return
         }
+        val prefs = getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE)
+        val remoteEnabled = prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)
+        if (!remoteEnabled && !VoiceModelManager.isReady(this)) {
+            VoiceLog.w(TAG, "evaluate: model not ready")
+            showPrompt(getString(R.string.voice_model_not_ready))
+            return
+        }
+        VoiceLog.i(TAG, "evaluate: ok (remote=$remoteEnabled), starting voice")
+        startVoice(prefs)
     }
 
-    private fun startVoice() {
+    private fun startVoice(prefs: android.content.SharedPreferences) {
         promptView?.visibility = View.GONE
         buttonRow?.visibility = View.VISIBLE
-        val dir = File(getExternalFilesDir(null) ?: filesDir, VoiceModelManager.MODEL_DIR_NAME)
-        val prefs = getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE)
-        val recConfig = RecognitionConfig(
-            decodingMethod = prefs.getString(QuickSendPrefs.VOICE_DECODING_METHOD, RecognitionConfig.DEFAULT_DECODING_METHOD) ?: RecognitionConfig.DEFAULT_DECODING_METHOD,
-            maxActivePaths = prefs.getInt(QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS, RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS),
-            blankPenalty = prefs.getFloat(QuickSendPrefs.VOICE_BLANK_PENALTY, RecognitionConfig.DEFAULT_BLANK_PENALTY),
-            endpointSilence = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_SILENCE, RecognitionConfig.DEFAULT_ENDPOINT_SILENCE),
-            endpointMaxUtterance = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER, RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE),
-            numThreads = prefs.getInt(QuickSendPrefs.VOICE_NUM_THREADS, RecognitionConfig.DEFAULT_NUM_THREADS),
-            provider = prefs.getString(QuickSendPrefs.VOICE_PROVIDER, RecognitionConfig.DEFAULT_PROVIDER) ?: RecognitionConfig.DEFAULT_PROVIDER
-        )
+
+        val remoteEnabled = prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)
+        val recognizerFactory: suspend () -> SpeechRecognizer
+        if (remoteEnabled) {
+            val url = prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: ""
+            val token = prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, null)
+            if (url.isBlank()) {
+                VoiceLog.w(TAG, "remote enabled but URL empty")
+                showPrompt("请先配置远端服务器地址")
+                return
+            }
+            VoiceLog.i(TAG, "using remote ASR: $url")
+            recognizerFactory = { RemoteSpeechRecognizer(url, token) }
+        } else {
+            val dir = File(getExternalFilesDir(null) ?: filesDir, VoiceModelManager.MODEL_DIR_NAME)
+            val recConfig = RecognitionConfig(
+                decodingMethod = prefs.getString(QuickSendPrefs.VOICE_DECODING_METHOD, RecognitionConfig.DEFAULT_DECODING_METHOD) ?: RecognitionConfig.DEFAULT_DECODING_METHOD,
+                maxActivePaths = prefs.getInt(QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS, RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS),
+                blankPenalty = prefs.getFloat(QuickSendPrefs.VOICE_BLANK_PENALTY, RecognitionConfig.DEFAULT_BLANK_PENALTY),
+                endpointSilence = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_SILENCE, RecognitionConfig.DEFAULT_ENDPOINT_SILENCE),
+                endpointMaxUtterance = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER, RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE),
+                numThreads = prefs.getInt(QuickSendPrefs.VOICE_NUM_THREADS, RecognitionConfig.DEFAULT_NUM_THREADS),
+                provider = prefs.getString(QuickSendPrefs.VOICE_PROVIDER, RecognitionConfig.DEFAULT_PROVIDER) ?: RecognitionConfig.DEFAULT_PROVIDER
+            )
+            val names = SherpaModelNames()
+            VoiceLog.i(TAG, "using local Sherpa model")
+            recognizerFactory = {
+                val rec = SherpaModelHolder.getOrLoad(dir, names, recConfig)
+                SherpaRecognizer(rec)
+            }
+        }
+
         val ctrl = VoiceController(
-            context = this,
-            modelDir = dir,
+            recognizerFactory = recognizerFactory,
             remote = { remoteService },
-            names = SherpaModelNames(),
-            config = recConfig,
             onSessionEnd = { mainHandler.post { stopSelf() } }
         )
         controller = ctrl
@@ -354,7 +367,6 @@ class VoiceOverlayService : Service() {
             visibility = View.VISIBLE
         }
         buttonRow?.visibility = View.GONE
-        // 提示时把按钮区改为单"去设置"
         buttonRow?.removeAllViews()
         buttonRow?.addView(
             makeButton(getString(R.string.voice_open_settings), secondary = false) { openSettings() },

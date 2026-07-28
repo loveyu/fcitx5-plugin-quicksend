@@ -104,6 +104,12 @@
     <string name="voice_downloading">下载中 %1$d%%</string>
     <string name="voice_download_failed">下载失败：%1$s</string>
 
+    <!-- 远端 ASR -->
+    <string name="voice_remote_section">远端服务器（关闭时使用本地模型）</string>
+    <string name="voice_remote_enabled">启用远端服务器</string>
+    <string name="voice_remote_url">服务器地址（如 ws://192.168.1.100:6008）</string>
+    <string name="voice_remote_token">鉴权 Token</string>
+
     <!-- 调试日志 -->
     <string name="voice_log_section">调试日志</string>
     <string name="voice_log_path_label">日志文件路径</string>

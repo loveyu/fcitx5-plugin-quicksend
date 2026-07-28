@@ -46,4 +46,10 @@ object QuickSendPrefs {
     const val VOICE_ENDPOINT_MAX_UTTER = "voice_endpoint_max_utter"
     const val VOICE_NUM_THREADS = "voice_num_threads"
     const val VOICE_PROVIDER = "voice_provider"
+
+    // ===== 远端 ASR =====
+
+    const val VOICE_REMOTE_ENABLED = "voice_remote_enabled"
+    const val VOICE_REMOTE_URL = "voice_remote_url"
+    const val VOICE_REMOTE_TOKEN = "voice_remote_token"
 }
