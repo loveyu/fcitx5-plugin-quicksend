@@ -62,7 +62,7 @@ bindService(.plugin.SERVICE, perm.PLUGIN) ──▶ MainService.onBind()
 - `QuickSendConverters`：`List<ContentSegment>` ↔ JSON 字符串（`kotlinx.serialization`）。
 - `QuickSendDao`：主查询 `allEntries()` 全量、按 `useCount DESC, updatedAt DESC` 排序；`incrementUseCount`/`updateUseCount` 维护计数；`count()` 用于 500 上限校验。
 - `QuickSendManager`（`object`，自带 `CoroutineScope`）：`init(context)` 建库；暴露 `items: StateFlow<List<QuickSendEntry>>`；所有写操作后 `reload()`。`add()` 超 500 条返回 false。
-- `KeyNameMapping`：键名 ↔ `KeyEvent.KEYCODE_*` 全表 + 别名 + UI 分组（`groups`）。查表见 `docs/fcitx5-plugin-quicksend/data-model-proposal.md`。
+- `KeyNameMapping`：键名 ↔ `KeyEvent.KEYCODE_*` 全表 + 别名 + UI 分组（`groups`），含修饰键/控制键/导航键/功能键/符号键/数字键盘/字母数字七大类。映射表直接在 `KeyNameMapping.kt` 代码中定义。
 
 ## 发送链路
 
