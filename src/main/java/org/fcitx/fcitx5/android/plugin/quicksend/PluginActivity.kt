@@ -176,22 +176,18 @@ class PluginActivity : Activity() {
         setupColorChip(binding.chipBgLight, QuickSendPrefs.OVERLAY_BG_COLOR, QuickSendPrefs.DEFAULT_BG_COLOR) { color ->
             prefs.edit().putInt(QuickSendPrefs.OVERLAY_BG_COLOR, color).apply()
             refreshPreviewLight(btnText)
-            refreshColorChip(binding.chipBgLight, color)
         }
         setupColorChip(binding.chipBgDark, QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, QuickSendPrefs.DEFAULT_BG_COLOR) { color ->
             prefs.edit().putInt(QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, color).apply()
             refreshPreviewDark(btnText)
-            refreshColorChip(binding.chipBgDark, color)
         }
         setupColorChip(binding.chipTextLight, QuickSendPrefs.OVERLAY_TEXT_COLOR, QuickSendPrefs.DEFAULT_TEXT_COLOR) { color ->
             prefs.edit().putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR, color).apply()
             refreshPreviewLight(btnText)
-            refreshColorChip(binding.chipTextLight, color)
         }
         setupColorChip(binding.chipTextDark, QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, QuickSendPrefs.DEFAULT_TEXT_COLOR) { color ->
             prefs.edit().putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, color).apply()
             refreshPreviewDark(btnText)
-            refreshColorChip(binding.chipTextDark, color)
         }
 
         binding.presetsButton.setOnClickListener { showPresetsDialog(btnText) }
@@ -201,21 +197,18 @@ class PluginActivity : Activity() {
     }
 
     private fun setupColorChip(container: View, key: String, defaultColor: Int, onPicked: (Int) -> Unit) {
-        val color = prefs.getInt(key, defaultColor)
-        val chipView = View(this).apply {
-            val size = (30 * resources.displayMetrics.density).toInt()
-            layoutParams = ViewGroup.LayoutParams(size, size)
-        }
-        (container as ViewGroup).removeAllViews()
-        container.addView(chipView)
-        refreshColorChip(chipView, color)
+        refreshColorChip(container, prefs.getInt(key, defaultColor))
         container.setOnClickListener {
-            ColorPickerDialog(this, color) { newColor -> onPicked(newColor) }.show()
+            val cur = prefs.getInt(key, defaultColor)
+            ColorPickerDialog(this, cur) { newColor ->
+                refreshColorChip(container, newColor)
+                onPicked(newColor)
+            }.show()
         }
     }
 
-    private fun refreshColorChip(chip: View, color: Int) {
-        chip.background = GradientDrawable().apply {
+    private fun refreshColorChip(view: View, color: Int) {
+        view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color)
             setStroke(1, Color.argb(80, 128, 128, 128))
@@ -309,14 +302,10 @@ class PluginActivity : Activity() {
                     .apply()
                 refreshPreviewLight(btnText)
                 refreshPreviewDark(btnText)
-                refreshColorChip(
-                    (binding.chipBgLight as ViewGroup).getChildAt(0), bgColor)
-                refreshColorChip(
-                    (binding.chipBgDark as ViewGroup).getChildAt(0), bgColor)
-                refreshColorChip(
-                    (binding.chipTextLight as ViewGroup).getChildAt(0), textColor)
-                refreshColorChip(
-                    (binding.chipTextDark as ViewGroup).getChildAt(0), textColor)
+                refreshColorChip(binding.chipBgLight, bgColor)
+                refreshColorChip(binding.chipBgDark, bgColor)
+                refreshColorChip(binding.chipTextLight, textColor)
+                refreshColorChip(binding.chipTextDark, textColor)
             }
 
             gridContainer.addView(chip)

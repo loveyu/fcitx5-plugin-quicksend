@@ -210,11 +210,11 @@
                 android:textColor="@color/qs_text_primary"
                 android:textSize="14sp" />
 
-            <View
+            <FrameLayout
                 android:id="@+id/chip_bg_light"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless" />
+                android:foreground="?android:attr/selectableItemBackgroundBorderless" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -224,11 +224,11 @@
                 android:text="☀"
                 android:textSize="16sp" />
 
-            <View
+            <FrameLayout
                 android:id="@+id/chip_bg_dark"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless" />
+                android:foreground="?android:attr/selectableItemBackgroundBorderless" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -253,11 +253,11 @@
                 android:textColor="@color/qs_text_primary"
                 android:textSize="14sp" />
 
-            <View
+            <FrameLayout
                 android:id="@+id/chip_text_light"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless" />
+                android:foreground="?android:attr/selectableItemBackgroundBorderless" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -267,11 +267,11 @@
                 android:text="☀"
                 android:textSize="16sp" />
 
-            <View
+            <FrameLayout
                 android:id="@+id/chip_text_dark"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
-                android:background="?android:attr/selectableItemBackgroundBorderless" />
+                android:foreground="?android:attr/selectableItemBackgroundBorderless" />
 
             <TextView
                 android:layout_width="wrap_content"
