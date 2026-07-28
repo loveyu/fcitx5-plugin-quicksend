@@ -133,4 +133,5 @@
     <string name="btn_light_mode">日间模式</string>
     <string name="btn_dark_mode">夜间模式</string>
     <string name="btn_preset_button">快速选择预设方案</string>
+    <string name="btn_preview_title">实时预览</string>
 </resources>

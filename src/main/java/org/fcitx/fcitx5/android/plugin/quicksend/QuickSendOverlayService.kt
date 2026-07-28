@@ -11,6 +11,7 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -19,6 +20,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.ImageButton
@@ -219,6 +221,10 @@ class QuickSendOverlayService : android.app.Service() {
         runCatching { wm.addView(btn, lp) }
         buttonView = btn
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            btn.post { adjustForKeyboard(btn) }
+        }
+
         collectJob = scope.launch {
             QuickSendManager.items.collect { list ->
                 adapter?.apply { clear(); addAll(list); notifyDataSetChanged() }
@@ -310,11 +316,14 @@ class QuickSendOverlayService : android.app.Service() {
         val screenW = metrics.widthPixels
         val screenH = metrics.heightPixels
 
+        val keyboardH = getKeyboardHeight(view)
+        val usableH = screenH - keyboardH
+
         val gravX = if (centerX < screenW / 2) Gravity.START else Gravity.END
-        val gravY = if (centerY < screenH / 4) Gravity.TOP else Gravity.BOTTOM
+        val gravY = if (centerY < usableH / 4) Gravity.TOP else Gravity.BOTTOM
 
         buttonX = if (gravX == Gravity.START) location[0] else screenW - (location[0] + w)
-        buttonY = if (gravY == Gravity.TOP) location[1] else screenH - (location[1] + h)
+        buttonY = if (gravY == Gravity.TOP) location[1] else usableH - (location[1] + h)
         buttonGravity = gravX or gravY
 
         val lp = view.layoutParams as WindowManager.LayoutParams
@@ -324,6 +333,19 @@ class QuickSendOverlayService : android.app.Service() {
         windowManager?.updateViewLayout(view, lp)
 
         savePosition()
+    }
+
+    private fun getKeyboardHeight(view: View): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return 0
+        return view.rootWindowInsets?.getInsets(WindowInsets.Type.ime())?.bottom ?: 0
+    }
+
+    private fun adjustForKeyboard(view: View) {
+        val keyboardH = getKeyboardHeight(view)
+        if (keyboardH <= 0 || (buttonGravity and Gravity.BOTTOM) == 0) return
+        val lp = view.layoutParams as WindowManager.LayoutParams
+        lp.y = buttonY + keyboardH
+        windowManager?.updateViewLayout(view, lp)
     }
 
     private fun showList() {

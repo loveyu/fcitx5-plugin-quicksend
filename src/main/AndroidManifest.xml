@@ -64,6 +64,12 @@
             android:exported="false"
             android:theme="@style/Theme.QuickSend" />
 
+        <!-- 悬浮按钮外观设置页 -->
+        <activity
+            android:name="org.fcitx.fcitx5.android.plugin.quicksend.AppearanceActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QuickSend" />
+
         <!-- 分享语音调试日志（应用专用外部目录文件经 content:// 授权给其它应用） -->
         <provider
             android:name="androidx.core.content.FileProvider"
