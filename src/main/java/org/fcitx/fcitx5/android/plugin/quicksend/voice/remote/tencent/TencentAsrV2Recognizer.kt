@@ -82,10 +82,8 @@ class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) :
             }
             val kind = classifyTencentCode(code)
             VoiceLog.w(tag, "tencent error $code: $msg → $kind")
-            val ex = RemoteAsrException("tencent asr $code: $msg", kind)
-            val err = RecognitionEvent.Error(ex, kind)
-            eventChannel.trySend(err)
-            markFinal(err)
+            // 用 failSession：完成 wsReady（让 start() 以正确分类抛出，而非等 onFailure 的 Generic 覆盖）
+            failSession(RemoteAsrException("tencent asr $code: $msg", kind), kind)
             return
         }
         markReady()

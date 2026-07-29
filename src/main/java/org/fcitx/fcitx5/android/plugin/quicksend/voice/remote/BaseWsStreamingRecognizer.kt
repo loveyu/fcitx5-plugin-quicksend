@@ -119,6 +119,13 @@ abstract class BaseWsStreamingRecognizer(
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            // 若已通过消息收到明确错误/最终结果（finalResult 已完成），此处只是连接随后关闭
+            // （如服务端下发错误码后断开），不再以 Generic 覆盖先前更准确的分类
+            // （例如腾讯 4004 已判为 RemoteAuth，随后的 EOF 不应再降级为 Generic）。
+            if (finalResult.isCompleted) {
+                VoiceLog.i(tag, "ws failure ignored (session already terminated): ${t.javaClass.simpleName}: ${t.message}")
+                return
+            }
             // WS 升级失败时 OkHttp 在 response 里携带 HTTP 状态码与体，据此区分鉴权/满载，
             // 不再一律静默回退本地；其它（TCP 不通等 response==null）→ Generic → 回退本地。
             val kind = classifyFailure(t, response)
@@ -155,6 +162,21 @@ abstract class BaseWsStreamingRecognizer(
     /** 子类收到最终结果时调用。 */
     protected fun markFinal(event: RecognitionEvent) {
         if (!finalResult.isCompleted) finalResult.complete(event)
+    }
+
+    /**
+     * 子类收到致命错误消息时调用：用带分类的异常完成握手/最终 deferred（让 [start] 以**正确分类**抛出，
+     * 而不是干等随后连接关闭触发的 onFailure 以 Generic 覆盖——例如腾讯首帧即 4004，此前 wsReady 未完成，
+     * start() 会卡在 wsReady.await()），并下发错误事件。之后连接关闭触发的 onFailure 会被忽略。
+     */
+    protected fun failSession(throwable: Throwable, kind: ErrorKind) {
+        val ex = (throwable as? RemoteAsrException)
+            ?: RemoteAsrException("remote ASR ${kind.name.lowercase()}: ${throwable.message}", kind, throwable)
+        if (!wsReady.isCompleted) wsReady.completeExceptionally(ex)
+        if (!wsListening.isCompleted) wsListening.completeExceptionally(ex)
+        val err = RecognitionEvent.Error(ex, kind)
+        if (!finalResult.isCompleted) finalResult.complete(err)
+        eventChannel.trySend(err)
     }
 
     override suspend fun start() {

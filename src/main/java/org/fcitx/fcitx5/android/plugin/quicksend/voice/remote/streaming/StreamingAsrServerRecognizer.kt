@@ -77,9 +77,7 @@ class StreamingAsrServerRecognizer(
                 } else {
                     VoiceLog.w(tag, "server error: $msg (fatal=$fatal)")
                     if (fatal) {
-                        val err = RecognitionEvent.Error(RuntimeException(msg))
-                        eventChannel.trySend(err)
-                        markFinal(err)
+                        failSession(RuntimeException(msg), ErrorKind.Generic)
                     }
                 }
             }

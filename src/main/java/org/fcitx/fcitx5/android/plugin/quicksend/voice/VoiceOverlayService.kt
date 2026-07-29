@@ -448,12 +448,14 @@ class VoiceOverlayService : Service() {
                         return
                     }
                     voiceMode == VoiceMode.REMOTE && state.kind == ErrorKind.RemoteAuth -> {
-                        val msg = getString(R.string.voice_remote_auth_error)
+                        // 优先用服务端原始消息（如腾讯「资源包耗尽，请开通后付费…」），更可操作
+                        val msg = state.message.ifBlank { getString(R.string.voice_remote_auth_error) }
                         st.text = buildStatusText(msg)
                         Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                     }
                     voiceMode == VoiceMode.REMOTE && state.kind == ErrorKind.RemoteOverload -> {
-                        st.text = buildStatusText(getString(R.string.voice_remote_overload_error))
+                        val msg = state.message.ifBlank { getString(R.string.voice_remote_overload_error) }
+                        st.text = buildStatusText(msg)
                     }
                     voiceMode == VoiceMode.REMOTE -> {
                         switchToLocalMode(VoiceMode.REMOTE_FALLBACK_LOCAL, "all remotes failed (${state.kind})")
