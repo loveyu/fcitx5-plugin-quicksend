@@ -24,7 +24,7 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 
 - **JDK 17+** 运行 Gradle（AGP 9 / Gradle 9 要求）；字节码目标 Java 11。
 - 产物 `build/outputs/apk/{debug,release}/`，按 ABI 拆 3 包（arm64-v8a / armeabi-v7a / x86_64），**无 universal 包**。
-- 当前**无测试源码**（`src/test`、`src/androidTest` 是空壳）。
+- `src/test` 有腾讯 ASR 客户端签名单测（`TencentV2SigningTest` / `TencentAsrV1SigningTest`，纯 JVM）；无 instrumented 测试（`src/androidTest`）。
 
 > ⚠️ **坑 1（最关键）——签名一致**：插件经 `protectionLevel="signature"` 的 IPC 权限绑定 host，**双方必须同一签名证书**。debug 双方都用标准 Android debug keystore；release 用与 host 一致的 keystore（配置在 `local.properties` 的 `signing.*` 或 `SIGNING_*` 环境变量）。签名不一致 → 绑定失败 → 所有发送/注入都不工作。
 > ⚠️ **坑 2——镜像源本地/CI 不一致**：仓库内 `settings.gradle.kts` 前置阿里云镜像、`gradle-wrapper.properties` 用腾讯云 gradle 分发镜像（为被墙环境）。**CI 会用 `sed` 把它们改回官方源**。改仓库源时**两处都要同步**。

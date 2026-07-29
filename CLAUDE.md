@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clipboard-helper-plugin` 的插件协议）。两个功能支柱：
 
 1. **QuickSend**：发送预设的按键组合 / 文本（如 `Ctrl+Shift+Del`、`Shift+Tab`），条目存 Room。
-2. **语音输入**：基于 Sherpa-ONNX 的本地流式中文识别，运行时下载模型，浮层驱动。
+2. **语音输入**：默认本地 Sherpa-ONNX 流式中文识别（运行时下载模型），可选远端多后端 ASR（streaming-asr-server / 腾讯 V1 通用引擎 / V2 大模型引擎），浮层驱动。
 
 插件不是主项目模块，通过 AIDL IPC 与 fcitx5-android **主程序**（host）通信。**关键依赖**：发送按键/文本/语音注入都需要 host 在 `IQuickSendService` 中实现对应方法 —— 这部分在 host 侧（本仓库的姐妹目录 `/data/www-data/code/fcitx5-android` 的 fork，IPC 代码在其 `release` 分支）。本仓库只含插件侧。
 
@@ -17,14 +17,14 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 # 构建前确保：local.properties 指向 Android SDK（sdk.dir=...），且 libs/ 有 Sherpa AAR
 ./gradlew assembleDebug      # 调试 APK，applicationIdSuffix=.debug，绑定 host debug
 ./gradlew assembleRelease    # 发布 APK，绑定 host release（需 release 签名）
-./gradlew test               # 跑单元测试（当前仓库无测试源码，仅声明了 junit 依赖）
+./gradlew test               # 跑单元测试（含腾讯 ASR 客户端签名单测）
 ./gradlew downloadSherpaAar  # 单独下载 Sherpa-ONNX AAR 到 libs/（构建期会自动跑）
 ./gradlew clean
 ```
 
 - **JDK**：用 JDK 17+ 运行 Gradle（AGP 9 / Gradle 9 要求）；`compileOptions` 字节码目标为 Java 11。
 - **单测过滤**：`./gradlew test --tests "org.fcitx....ClassName.methodName"`（有测试时）。
-- 无 instrumented 测试（`src/androidTest`）、无 `src/test` 源码。
+- 无 instrumented 测试（`src/androidTest`）；`src/test` 有腾讯 ASR 客户端签名单测（`TencentV2SigningTest` / `TencentAsrV1SigningTest`）。
 - 产物：`build/outputs/apk/{debug,release}/`。按 ABI 拆 3 个包（arm64-v8a / armeabi-v7a / x86_64），无 universal 包。
 
 ## 架构（全貌）
@@ -42,10 +42,12 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 
 深入版见 [`docs/voice-subsystem.md`](docs/voice-subsystem.md)。要点：
 
-- `VoiceOverlayService`（前台服务，`foregroundServiceType=microphone`）由 host 语音按钮 `startForegroundService(START)` 启动 → `VoiceController` → `SherpaRecognizer`（本地流式 ASR）。
+- `VoiceOverlayService`（前台服务，`foregroundServiceType=microphone`）由 host 语音按钮 `startForegroundService(START)` 启动 → `VoiceController` → 本地 `SherpaRecognizer` 或远端多后端链。
+- **远端多后端 ASR**：`RemoteBackend`（sealed：streaming-asr-server / tencent-asr-v1 通用 / tencent-asr-v2 大模型）+ `RemoteBackendStore`（JSON 数组），启用的后端按优先级链式尝试、全失败回退本地；入口在主菜单「远端语音识别」（Compose 设置页，列表拖拽排序 + 底部抽屉编辑 + 单后端测试）。腾讯 V1/V2 同址同签名（`TencentV2Signing`，客户端 HMAC-SHA1）。
 - **流式注入**：partial 经 `setComposingText` 写入输入框组合区；final 经可选 `TextRefiner`（当前 `NoOpRefiner`）后 `commitText`。
 - ⚠️ **native 线程铁律**：`SherpaRecognizer` 中所有 Sherpa 原生对象（recognizer/stream/AudioRecord）只在唯一的 `nativeThread` 上创建、使用、释放；`stop/cancel/releaseNow` 仅翻转 volatile 标志并 `join` 该线程，**绝不跨线程直接接触原生对象**。违反会导致 `acceptWaveform` 处 native SIGSEGV（use-after-free，已踩过坑）。
-- 模型运行时下载（`VoiceModelManager`，默认 HuggingFace，可改镜像/代理）。扩展点 `RecognizerProvider`（在线 ASR）/`TextRefiner`（大模型润色）目前是占位接口。
+- ⚠️ **Final=会话结束铁律**：`VoiceController.handle(Final)` 提交后必 `endSession`，故按句返回的远端后端只累积稳态句（`appendStable`）+ 发 Partial，会话结束（`final==1`/超时软结束）才一次性 `markFinal`，否则首句终止会话 + 重复提交。改腾讯识别器务必守此铁律。
+- 模型运行时下载（`VoiceModelManager`，默认 HuggingFace，可改镜像/代理）。扩展点 `TextRefiner`（大模型润色）仍是占位接口；在线 ASR 已由 `RemoteBackend` 多后端实现（不走 `RecognizerProvider`）。
 
 ## 关键约束与坑
 
@@ -62,6 +64,6 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 
 - [docs/ai-dev-playbook.md](docs/ai-dev-playbook.md) — **AI 协作开发操作手册**（构建/IPC 联调/语音坑/数据层/日志/协作规范速查，详解交叉引用各专题）
 - [docs/architecture.md](docs/architecture.md) — 组件全图、IPC 双向绑定、数据层、发送链路、各 service 职责
-- [docs/voice-subsystem.md](docs/voice-subsystem.md) — 语音管线、状态机、native 线程铁律、模型下载与代理、识别参数
+- [docs/voice-subsystem.md](docs/voice-subsystem.md) — 语音管线、状态机、native 线程铁律、本地 + 远端多后端 ASR、模型下载与代理、识别参数
 - [docs/build-and-release.md](docs/build-and-release.md) — 构建/签名/CI/版本号/Sherpa AAR/镜像源细节
 - [docs/tech-debt.md](docs/tech-debt.md) — 历史坑与设计权衡活文档（native SIGSEGV、切换真空期、远端回退策略、R8 混淆等；修复或变化后更新）
