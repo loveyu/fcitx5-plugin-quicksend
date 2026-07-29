@@ -24,7 +24,7 @@ sealed interface VoiceUiState {
     data class Partial(val text: String) : VoiceUiState
     data class Paused(val text: String) : VoiceUiState
     object Finishing : VoiceUiState
-    data class Error(val message: String) : VoiceUiState
+    data class Error(val message: String, val kind: ErrorKind = ErrorKind.Generic) : VoiceUiState
     object NotReady : VoiceUiState
 }
 
@@ -71,7 +71,7 @@ class VoiceController(
                 throw cancellation
             } catch (t: Throwable) {
                 VoiceLog.e(TAG, "recognizer creation failed", t)
-                _state.value = VoiceUiState.Error(t.message ?: "创建识别器失败")
+                _state.value = VoiceUiState.Error(t.message ?: "创建识别器失败", t.errorKind())
                 return@launch
             }
             VoiceLog.i(TAG, "recognizer created")
@@ -86,7 +86,8 @@ class VoiceController(
                 throw cancellation
             } catch (t: Throwable) {
                 VoiceLog.e(TAG, "recognizer start failed", t)
-                _state.value = VoiceUiState.Error(t.message ?: "启动识别失败")
+                // start() 因 WS 升级失败抛 RemoteAsrException 时，透传其分类（auth/overload）。
+                _state.value = VoiceUiState.Error(t.message ?: "启动识别失败", t.errorKind())
                 return@launch
             }
             VoiceLog.i(TAG, "recognizer started")
@@ -198,7 +199,7 @@ class VoiceController(
             }
             is RecognitionEvent.Error -> {
                 VoiceLog.e(TAG, "recognizer error: ${event.throwable.message}", event.throwable)
-                _state.value = VoiceUiState.Error(event.throwable.message ?: "识别错误")
+                _state.value = VoiceUiState.Error(event.throwable.message ?: "识别错误", event.kind)
             }
         }
     }

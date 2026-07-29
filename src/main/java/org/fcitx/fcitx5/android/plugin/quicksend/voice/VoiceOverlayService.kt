@@ -372,12 +372,26 @@ class VoiceOverlayService : Service() {
             }
             VoiceUiState.Finishing -> st.text = buildStatusText(getString(R.string.voice_committing))
             is VoiceUiState.Error -> {
-                // 仅网络模式失败时自动回退本地（显示 [NL]）；已在本地的错误直接展示。
-                if (voiceMode == VoiceMode.REMOTE) {
-                    switchToLocalMode(VoiceMode.REMOTE_FALLBACK_LOCAL, "remote failed")
-                    return
+                // 远端模式下按错误分类决定策略——
+                //   鉴权失败/满载：不静默回退本地，给出明确提示（让用户感知 Token 错或服务忙），
+                //   用户仍可点顶部「强制本地」开关手动切本地；
+                //   其它（网络不通等）：维持自动回退本地（[NL]）。
+                // 已在本地模式的错误直接展示文案。
+                when {
+                    voiceMode == VoiceMode.REMOTE && state.kind == ErrorKind.RemoteAuth -> {
+                        val msg = getString(R.string.voice_remote_auth_error)
+                        st.text = buildStatusText(msg)
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                    }
+                    voiceMode == VoiceMode.REMOTE && state.kind == ErrorKind.RemoteOverload -> {
+                        st.text = buildStatusText(getString(R.string.voice_remote_overload_error))
+                    }
+                    voiceMode == VoiceMode.REMOTE -> {
+                        switchToLocalMode(VoiceMode.REMOTE_FALLBACK_LOCAL, "remote failed (${state.kind})")
+                        return
+                    }
+                    else -> st.text = state.message
                 }
-                st.text = state.message
             }
             VoiceUiState.NotReady -> showPrompt(getString(R.string.voice_model_not_ready))
         }
