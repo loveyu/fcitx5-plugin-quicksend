@@ -49,6 +49,7 @@ import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.StreamingAsrServerBackend
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrV1Backend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrV2Backend
 import kotlin.math.roundToInt
 
@@ -132,6 +133,10 @@ fun RemoteAsrSettingsScreen(onBack: () -> Unit) {
                         showAdd = false
                         editing = StreamingAsrServerBackend(id = RemoteBackendStore.newId(), name = "streaming-asr-server")
                     }) { Text(stringResource(R.string.remote_type_streaming)) }
+                    TextButton(onClick = {
+                        showAdd = false
+                        editing = TencentAsrV1Backend(id = RemoteBackendStore.newId(), name = "tencent-asr-v1")
+                    }) { Text(stringResource(R.string.remote_type_tencent_v1)) }
                     TextButton(onClick = {
                         showAdd = false
                         editing = TencentAsrV2Backend(id = RemoteBackendStore.newId(), name = "tencent-asr-v2")

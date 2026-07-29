@@ -45,6 +45,8 @@ import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceOverlayService
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.StreamingAsrServerBackend
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrBackend
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrV1Backend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrV2Backend
 
 /**
@@ -66,7 +68,10 @@ fun RemoteBackendEditDrawer(
 
     // 以 backend.id 为 key，切换编辑对象时整体重置表单状态
     val streaming = backend as? StreamingAsrServerBackend
-    val tencent = backend as? TencentAsrV2Backend
+    val tencentV2 = backend as? TencentAsrV2Backend
+    val tencentV1 = backend as? TencentAsrV1Backend
+    // V1/V2 字段同构，取实际后端的值；都没有时按各自默认（仅影响新建瞬时态）
+    val tencent: TencentAsrBackend? = tencentV1 ?: tencentV2
 
     var name by remember(backend.id) { mutableStateOf(backend.name) }
     var enable by remember(backend.id) { mutableStateOf(backend.enable) }
@@ -77,11 +82,14 @@ fun RemoteBackendEditDrawer(
     var appId by remember(backend.id) { mutableStateOf(tencent?.appId ?: "") }
     var secretId by remember(backend.id) { mutableStateOf(tencent?.secretId ?: "") }
     var secretKey by remember(backend.id) { mutableStateOf(tencent?.secretKey ?: "") }
-    var engine by remember(backend.id) { mutableStateOf(tencent?.engineModelType ?: "16k_zh_en_2.0") }
+    var engine by remember(backend.id) {
+        mutableStateOf(tencent?.engineModelType ?: if (tencentV1 != null) "16k_zh" else "16k_zh_en_2.0")
+    }
     var voiceFormat by remember(backend.id) { mutableStateOf((tencent?.voiceFormat ?: 1).toString()) }
     var needVad by remember(backend.id) { mutableStateOf((tencent?.needVad ?: 1).toString()) }
     var filterDirty by remember(backend.id) { mutableStateOf((tencent?.filterDirty ?: 0).toString()) }
     var filterModal by remember(backend.id) { mutableStateOf((tencent?.filterModal ?: 0).toString()) }
+    var filterPunc by remember(backend.id) { mutableStateOf((tencentV1?.filterPunc ?: 0).toString()) }
     var convertNum by remember(backend.id) { mutableStateOf((tencent?.convertNumMode ?: 1).toString()) }
     var hotword by remember(backend.id) { mutableStateOf(tencent?.hotwordList ?: "") }
 
@@ -108,6 +116,25 @@ fun RemoteBackendEditDrawer(
                 needVad = needVad.toIntOrNull() ?: 1,
                 filterDirty = filterDirty.toIntOrNull() ?: 0,
                 filterModal = filterModal.toIntOrNull() ?: 0,
+                convertNumMode = convertNum.toIntOrNull() ?: 1,
+                hotwordList = hotword.trim(),
+            )
+        }
+        is TencentAsrV1Backend -> {
+            if (baseUrl.isBlank() || appId.isBlank() || secretId.isBlank() || secretKey.isBlank()) null
+            else backend.copy(
+                name = name.trim().ifBlank { "tencent-asr-v1" },
+                enable = enable, proxy = proxy.trim(),
+                baseUrl = baseUrl.trim(),
+                appId = appId.trim(),
+                secretId = secretId.trim(),
+                secretKey = secretKey.trim(),
+                engineModelType = engine.trim().ifBlank { "16k_zh" },
+                voiceFormat = voiceFormat.toIntOrNull() ?: 1,
+                needVad = needVad.toIntOrNull() ?: 1,
+                filterDirty = filterDirty.toIntOrNull() ?: 0,
+                filterModal = filterModal.toIntOrNull() ?: 0,
+                filterPunc = filterPunc.toIntOrNull() ?: 0,
                 convertNumMode = convertNum.toIntOrNull() ?: 1,
                 hotwordList = hotword.trim(),
             )
@@ -166,24 +193,29 @@ fun RemoteBackendEditDrawer(
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
                 }
-                is TencentAsrV2Backend -> {
+                is TencentAsrV1Backend, is TencentAsrV2Backend -> {
                     OutlinedTextField(
                         value = baseUrl, onValueChange = { baseUrl = it },
                         label = { Text(stringResource(R.string.tencent_field_baseurl)) },
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
                     TextButton(onClick = {
-                        clipboard.setText(AnnotatedString(TencentAsrV2Backend.DEFAULT_BASE_URL))
+                        val defaultUrl = if (tencentV1 != null) TencentAsrV1Backend.DEFAULT_BASE_URL
+                        else TencentAsrV2Backend.DEFAULT_BASE_URL
+                        clipboard.setText(AnnotatedString(defaultUrl))
                         toast(context, R.string.tencent_default_copied)
                     }) { Text(stringResource(R.string.tencent_copy_default)) }
                     OutlinedTextField(value = appId, onValueChange = { appId = it }, label = { Text(stringResource(R.string.tencent_field_appid)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = secretId, onValueChange = { secretId = it }, label = { Text(stringResource(R.string.tencent_field_secretid)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = secretKey, onValueChange = { secretKey = it }, label = { Text(stringResource(R.string.tencent_field_secretkey)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = engine, onValueChange = { engine = it }, label = { Text(stringResource(R.string.tencent_field_engine)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = engine, onValueChange = { engine = it }, label = { Text(stringResource(if (tencentV1 != null) R.string.tencent_field_engine_v1 else R.string.tencent_field_engine)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = voiceFormat, onValueChange = { voiceFormat = it }, label = { Text(stringResource(R.string.tencent_field_voice_format)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = needVad, onValueChange = { needVad = it }, label = { Text(stringResource(R.string.tencent_field_needvad)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = filterDirty, onValueChange = { filterDirty = it }, label = { Text(stringResource(R.string.tencent_field_filter_dirty)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = filterModal, onValueChange = { filterModal = it }, label = { Text(stringResource(R.string.tencent_field_filter_modal)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    if (tencentV1 != null) {
+                        OutlinedTextField(value = filterPunc, onValueChange = { filterPunc = it }, label = { Text(stringResource(R.string.tencent_field_filter_punc)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                    }
                     OutlinedTextField(value = convertNum, onValueChange = { convertNum = it }, label = { Text(stringResource(R.string.tencent_field_convert_num)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = hotword, onValueChange = { hotword = it }, label = { Text(stringResource(R.string.tencent_field_hotword)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
@@ -231,6 +263,7 @@ fun RemoteBackendEditDrawer(
 
 internal fun typeLabel(backend: RemoteBackend): String = when (backend) {
     is StreamingAsrServerBackend -> "streaming-asr-server"
+    is TencentAsrV1Backend -> "tencent-asr-v1"
     is TencentAsrV2Backend -> "tencent-asr-v2"
 }
 

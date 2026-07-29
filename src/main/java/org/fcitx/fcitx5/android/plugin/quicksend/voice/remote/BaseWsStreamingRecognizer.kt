@@ -64,6 +64,14 @@ abstract class BaseWsStreamingRecognizer(
     @Volatile protected var nativeThread: Thread? = null
     /** 最近一次 partial 文本：服务端业务级超时（idle）时用作软结束的 final 内容。 */
     @Volatile protected var lastPartialText: String = ""
+
+    /**
+     * 稳态整句累积区。腾讯等「按句返回多个稳态结果」的后端在此逐句追加，会话结束时一次性
+     * 作为 Final 提交——而不是每句都发 Final。因为 [VoiceController] 收到 Final 必定结束会话，
+     * 逐句 Final 会在首句就终止会话（后续句子丢失）并由 stop() 再次下发造成重复提交。
+     * streaming-asr-server 不用此区（服务端直接给整段 final 文本）。
+     */
+    protected val stableText = StringBuilder()
     @Volatile private var ws: WebSocket? = null
     @Volatile private var record: AudioRecord? = null
 
@@ -165,6 +173,26 @@ abstract class BaseWsStreamingRecognizer(
     }
 
     /**
+     * 稳态整句到达时调用：追加到 [stableText]，并把 [lastPartialText] 刷新为全量稳态文本。
+     * 返回该全量文本，子类据此下发 Partial（让浮层显示已稳态的全部内容）。多句识别的关键：
+     * 稳态句只更新展示、不提交，等会话结束（[markFinal]）一次性提交。
+     */
+    protected fun appendStable(text: String): String {
+        if (text.isNotEmpty()) stableText.append(text)
+        lastPartialText = stableText.toString()
+        return lastPartialText
+    }
+
+    /**
+     * 非稳态 partial 到达时调用：把 [lastPartialText] 刷新为「已稳态文本 + 当前句 partial」，
+     * 返回该全量文本供下发 Partial。
+     */
+    protected fun setPartial(text: String): String {
+        lastPartialText = stableText.toString() + text
+        return lastPartialText
+    }
+
+    /**
      * 子类收到致命错误消息时调用：用带分类的异常完成握手/最终 deferred（让 [start] 以**正确分类**抛出，
      * 而不是干等随后连接关闭触发的 onFailure 以 Generic 覆盖——例如腾讯首帧即 4004，此前 wsReady 未完成，
      * start() 会卡在 wsReady.await()），并下发错误事件。之后连接关闭触发的 onFailure 会被忽略。
@@ -189,6 +217,7 @@ abstract class BaseWsStreamingRecognizer(
         running = true
         paused = false
         lastPartialText = ""
+        stableText.setLength(0)
 
         val freshWs = client.newWebSocket(buildRequest(), WsHandler())
         ws = freshWs

@@ -12,25 +12,28 @@ import org.fcitx.fcitx5.android.plugin.quicksend.voice.RecognitionEvent
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.RemoteAsrException
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceLog
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.BaseWsStreamingRecognizer
-import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrV2Backend
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrV1Backend
 import org.json.JSONObject
 import java.util.UUID
 import kotlin.random.Random
 
 /**
- * 腾讯云实时语音识别 V2（WebSocket）。文档：https://cloud.tencent.com/document/api/1093/131127
+ * 腾讯云实时语音识别 V1（WebSocket）。文档：https://cloud.tencent.com/document/product/1093/48982
  *
- * 全部由客户端直连：签名（HMAC-SHA1 + Base64）在客户端计算后拼进 wss URL。
- * - 握手地址：`wss://asr.cloud.tencent.com/asr/v2/<appid>?<参数字典序>&signature=<urlencode(base64(hmac_sha1))>`
- * - 签名串 = `asr.cloud.tencent.com/asr/v2/<appid>?<参数按 key 字典序 k=v&k=v>`（不含 wss://、不含 signature）
- * - 音频：16k PCM16 单声道，voice_format=1，二进制帧按 ~1:1 实时发送（复用基类录音循环）
- * - 响应：JSON，code!=0 为错误（4002/4003 鉴权、4004/4005 配额、4006 并发满载、4008 超时可软结束）；
- *   code==0 取 sentences.sentence，sentence_type==1 视为本句 Final（提交），否则 Partial。
+ * 与 V2 共用同一握手地址（`wss://asr.cloud.tencent.com/asr/v2/<appid>`）与同一签名算法
+ * （[TencentV2Signing]：HMAC-SHA1 + Base64 + urlencode，签名串不含 scheme）。区别是引擎与响应：
+ * - V1 支持**通用引擎**（默认 `16k_zh`），对应通用资源包；
+ * - 响应按句返回 `result.slice_type`（0 开始/1 进行中非稳态/2 结束稳态）+ `voice_text_str`；
+ * - `final==1` 表示全部识别完成、服务端将关闭连接。
+ *
+ * 多句处理：稳态整句（slice_type==2）累积到 [stableText] 只更新展示，不逐句提交——因为
+ * [VoiceController] 收到 Final 必结束会话，逐句 Final 会在首句终止会话并重复提交。
+ * 会话结束（`final==1` 或 stop 超时软结束）才把全量稳态文本作为 Final 一次性提交。
  */
-class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) :
+class TencentAsrV1Recognizer(private val config: TencentAsrV1Backend) :
     BaseWsStreamingRecognizer(config.proxy) {
 
-    override val tag: String = "TencentASR"
+    override val tag: String = "TencentASRv1"
     override val requiresListeningState: Boolean = false
 
     private val voiceId: String = UUID.randomUUID().toString().replace("-", "")
@@ -50,10 +53,11 @@ class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) :
             put("needvad", config.needVad.toString())
             put("filter_dirty", config.filterDirty.toString())
             put("filter_modal", config.filterModal.toString())
+            put("filter_punc", config.filterPunc.toString())
             put("convert_num_mode", config.convertNumMode.toString())
             if (config.hotwordList.isNotEmpty()) put("hotword_list", config.hotwordList)
         }
-        // 字典序拼接签名串（不含 scheme、不含 signature）→ HMAC-SHA1 签名 → 拼 URL
+        // 字典序拼接签名串（不含 scheme、不含 signature）→ HMAC-SHA1 签名 → 拼 URL（与 V2 同算法）
         val sorted = params.toList().sortedBy { it.first }
         val signString = TencentV2Signing.buildSignString(config.baseUrl, config.appId, sorted)
         val signature = TencentV2Signing.signature(config.secretKey, signString)
@@ -70,7 +74,7 @@ class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) :
         val code = obj.optInt("code", 0)
         if (code != 0) {
             val msg = obj.optString("message", "tencent asr error $code")
-            // 4008（音频分片等待超时）属可恢复的业务级超时 → 软结束本轮，不判远端不可用。
+            // 4008（客户端 15 秒未发音频）属可恢复的业务级超时 → 软结束本轮，不判远端不可用。
             if (code == 4008 && isRecoverableTimeout(msg)) {
                 VoiceLog.w(tag, "tencent recoverable timeout ($code): $msg → soft finalize")
                 markFinal(RecognitionEvent.Final(lastPartialText))
@@ -79,17 +83,16 @@ class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) :
             val kind = classifyTencentCode(code)
             VoiceLog.w(tag, "tencent error $code: $msg → $kind")
             // 用 failSession：完成 wsReady（让 start() 以正确分类抛出，而非等 onFailure 的 Generic 覆盖）
-            failSession(RemoteAsrException("tencent asr $code: $msg", kind), kind)
+            failSession(RemoteAsrException("tencent asr v1 $code: $msg", kind), kind)
             return
         }
         markReady()
-        val sents = obj.optJSONObject("sentences")
-        if (sents != null) {
-            val text = sents.optString("sentence", "")
-            val stype = sents.optInt("sentence_type", 0)
-            // sentence_type==1 = 本句稳态 → 累积（不逐句提交，避免首句就结束会话/重复提交）；
-            // 否则 = 进行中 → 作 partial 展示。
-            val display = if (stype == 1) appendStable(text) else setPartial(text)
+        val result = obj.optJSONObject("result")
+        if (result != null) {
+            val text = result.optString("voice_text_str", "")
+            val sliceType = result.optInt("slice_type", 0)
+            // slice_type 2 = 本句稳态（不再变化）→ 累积；0/1 = 进行中 → 作 partial 展示
+            val display = if (sliceType == 2) appendStable(text) else setPartial(text)
             if (display.isNotEmpty()) eventChannel.trySend(RecognitionEvent.Partial(display))
         }
         if (obj.optInt("final", 0) == 1) {

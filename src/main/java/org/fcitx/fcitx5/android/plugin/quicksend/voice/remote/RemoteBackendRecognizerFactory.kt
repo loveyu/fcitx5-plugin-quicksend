@@ -6,6 +6,7 @@ package org.fcitx.fcitx5.android.plugin.quicksend.voice.remote
 
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.SpeechRecognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.streaming.StreamingAsrServerRecognizer
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.tencent.TencentAsrV1Recognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.tencent.TencentAsrV2Recognizer
 
 /**
@@ -13,5 +14,6 @@ import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.tencent.TencentAsr
  */
 fun RemoteBackend.recognizer(): SpeechRecognizer = when (this) {
     is StreamingAsrServerBackend -> StreamingAsrServerRecognizer(url, token.ifBlank { null }, proxy)
+    is TencentAsrV1Backend -> TencentAsrV1Recognizer(this)
     is TencentAsrV2Backend -> TencentAsrV2Recognizer(this)
 }
