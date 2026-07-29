@@ -21,6 +21,7 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 import org.fcitx.fcitx5.android.plugin.quicksend.databinding.ActivityPluginBinding
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.EditEntryDialog
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.QuickSendAdapter
+import org.fcitx.fcitx5.android.plugin.quicksend.log.LogSettingsActivity
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceSettingsActivity
 
 class PluginActivity : Activity() {
@@ -57,6 +58,10 @@ class PluginActivity : Activity() {
                     }
                     R.id.action_voice_settings -> {
                         startActivity(Intent(this, VoiceSettingsActivity::class.java))
+                        true
+                    }
+                    R.id.action_log_settings -> {
+                        startActivity(Intent(this, LogSettingsActivity::class.java))
                         true
                     }
                     else -> false

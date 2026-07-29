@@ -26,7 +26,6 @@ import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.databinding.ActivityVoiceSettingsBinding
-import org.fcitx.fcitx5.android.plugin.quicksend.log.LogSettingsActivity
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.ProxyConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
 
@@ -64,10 +63,6 @@ class VoiceSettingsActivity : Activity() {
         binding.remoteSettingsButton.setOnClickListener {
             persistPrefs()
             startActivity(Intent(this, RemoteVoiceSettingsActivity::class.java))
-        }
-
-        binding.logSettingsButton.setOnClickListener {
-            startActivity(Intent(this, LogSettingsActivity::class.java))
         }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)

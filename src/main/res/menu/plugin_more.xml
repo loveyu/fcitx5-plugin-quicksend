@@ -6,4 +6,7 @@
     <item
         android:id="@+id/action_voice_settings"
         android:title="@string/voice_settings_entry" />
+    <item
+        android:id="@+id/action_log_settings"
+        android:title="@string/log_settings_entry" />
 </menu>
