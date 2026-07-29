@@ -80,12 +80,12 @@ android {
         release {
             manifestPlaceholders["fcitxAppId"] = "org.fcitx.fcitx5.android"
             buildConfigField("String", "FCITX_APP_ID", "\"org.fcitx.fcitx5.android\"")
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
+            // 不开启 R8 混淆/压缩：插件命名空间代码量小，混淆收益有限，反而会重命名
+            // Sherpa-ONNX 的 JNI 字段（如 OnlineRecognizerConfig.decodingMethod），导致 native
+            // GetFieldID 失败、本地模型加载抛 "Failed to get field ID for decodingMethod"。
+            // 关闭后既能修复该崩溃，也保留可读堆栈，便于排查问题。
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
         }
     }

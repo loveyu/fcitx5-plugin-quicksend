@@ -79,6 +79,7 @@
     <string name="voice_committing">提交中…</string>
     <string name="voice_crash_toast">语音遇到错误，已记录日志，请重试</string>
     <string name="voice_fallback_failed">远端失败且本地不可用，已关闭语音</string>
+    <string name="voice_force_local_desc">强制使用本地模型（仅本次会话，点击切回网络模式）</string>
     <string name="voice_pause">暂停</string>
     <string name="voice_resume">继续</string>
     <string name="voice_backspace">退格</string>

@@ -37,6 +37,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -76,14 +77,15 @@ class VoiceOverlayService : Service() {
     private var pauseBtn: TextView? = null
     private var backspaceBtn: TextView? = null
     private var finishBtn: TextView? = null
+    private var forceLocalToggle: TextView? = null
 
     private var controller: VoiceController? = null
+    private var collectJob: Job? = null
     private var remoteService: IQuickSendService? = null
     private var bound = false
     private var registered = false
 
     private var voiceMode = VoiceMode.LOCAL
-    private var isFallingBack = false
     private var currentPrefs: SharedPreferences? = null
 
     private enum class VoiceMode { LOCAL, REMOTE, REMOTE_FALLBACK_LOCAL }
@@ -169,27 +171,121 @@ class VoiceOverlayService : Service() {
 
     private fun startVoice(prefs: android.content.SharedPreferences) {
         currentPrefs = prefs
-        isFallingBack = false
         promptView?.visibility = View.GONE
         buttonRow?.visibility = View.VISIBLE
-
-        val remoteEnabled = prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)
-        if (remoteEnabled) {
-            val url = prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: ""
-            val token = prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, null)
-            if (url.isBlank()) {
-                VoiceLog.w(TAG, "remote enabled but URL empty")
-                showPrompt("请先配置远端服务器地址")
-                return
-            }
-            voiceMode = VoiceMode.REMOTE
-            VoiceLog.i(TAG, "using remote ASR: $url")
-            createAndStartController { RemoteSpeechRecognizer(url, token) }
+        // 初始模式：按设置走（remote 开启则网络，否则本地）。会话内的强制本地/回退由切换函数处理。
+        val mode = if (prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)) {
+            VoiceMode.REMOTE
         } else {
-            voiceMode = VoiceMode.LOCAL
-            VoiceLog.i(TAG, "using local Sherpa model")
-            createAndStartController { makeLocalRecognizer(prefs) }
+            VoiceMode.LOCAL
         }
+        launchRecognizer(prefs, mode)
+    }
+
+    /**
+     * 按指定模式创建并启动识别器。远程 → 直接用 RemoteSpeechRecognizer；本地 → 懒加载 Sherpa 模型
+     * （在 [VoiceController.start] 的 IO 线程内首次加载，不在网络模式时预占内存）。
+     */
+    private fun launchRecognizer(prefs: android.content.SharedPreferences, mode: VoiceMode) {
+        voiceMode = mode
+        updateForceLocalToggle()
+        when (mode) {
+            VoiceMode.REMOTE -> {
+                val url = prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: ""
+                val token = prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, null)
+                if (url.isBlank()) {
+                    VoiceLog.w(TAG, "remote enabled but URL empty")
+                    showPrompt("请先配置远端服务器地址")
+                    return
+                }
+                VoiceLog.i(TAG, "using remote ASR: $url")
+                createAndStartController { RemoteSpeechRecognizer(url, token) }
+            }
+            VoiceMode.LOCAL, VoiceMode.REMOTE_FALLBACK_LOCAL -> {
+                VoiceLog.i(TAG, "using local Sherpa model (mode=$mode)")
+                createAndStartController { makeLocalRecognizer(prefs) }
+            }
+        }
+    }
+
+    /**
+     * 切换到本地模型。[displayMode] 决定前缀显示：手动切换为 [VoiceMode.LOCAL]（[L]），
+     * 远端失败自动回退为 [VoiceMode.REMOTE_FALLBACK_LOCAL]（[NL]，红色 N 提示）。
+     * 显式预加载模型：失败时 Toast 提示并关闭，避免裸异常。
+     */
+    private fun switchToLocalMode(displayMode: VoiceMode, reason: String) {
+        val prefs = currentPrefs ?: return
+        if (!VoiceModelManager.isReady(this)) {
+            AppLog.e(TAG, "cannot switch to local, model not ready ($reason)")
+            mainHandler.post {
+                Toast.makeText(this, getString(R.string.voice_fallback_failed), Toast.LENGTH_LONG).show()
+                closeAndStop()
+            }
+            return
+        }
+        VoiceLog.i(TAG, "switch to local: $reason (mode=$displayMode)")
+        voiceMode = displayMode
+        updateForceLocalToggle()
+        teardownCurrentController()
+        scope.launch(Dispatchers.IO) {
+            try {
+                val rec = makeLocalRecognizer(prefs)
+                runOnUiThread { createAndStartController { rec } }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                AppLog.e(TAG, "switch to local failed", t)
+                mainHandler.post {
+                    Toast.makeText(this@VoiceOverlayService, getString(R.string.voice_fallback_failed), Toast.LENGTH_LONG).show()
+                    closeAndStop()
+                }
+            }
+        }
+    }
+
+    /** 切回网络模式（用户点击强制本地开关关闭时）。 */
+    private fun switchToRemoteMode() {
+        val prefs = currentPrefs ?: return
+        val url = prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: ""
+        val token = prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, null)
+        if (url.isBlank()) {
+            VoiceLog.w(TAG, "switch to remote: URL empty")
+            showPrompt("请先配置远端服务器地址")
+            return
+        }
+        VoiceLog.i(TAG, "switch to remote (user toggled back)")
+        voiceMode = VoiceMode.REMOTE
+        updateForceLocalToggle()
+        teardownCurrentController()
+        createAndStartController { RemoteSpeechRecognizer(url, token) }
+    }
+
+    /** 悬浮窗顶部的「强制本地」开关：仅在远端（网络）模式可用时显示，仅当前会话生效。 */
+    private fun onForceLocalClicked() {
+        if (voiceMode == VoiceMode.REMOTE) {
+            switchToLocalMode(VoiceMode.LOCAL, "user toggle")
+        } else {
+            switchToRemoteMode()
+        }
+    }
+
+    private fun teardownCurrentController() {
+        collectJob?.cancel()
+        collectJob = null
+        controller?.destroy()
+        controller = null
+    }
+
+    /** 强制本地开关的显隐与状态：远端未启用则隐藏；当前为本地（手动/回退）时高亮。 */
+    private fun updateForceLocalToggle() {
+        val btn = forceLocalToggle ?: return
+        val remoteAvailable = currentPrefs?.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false) == true
+        btn.visibility = if (remoteAvailable) View.VISIBLE else View.GONE
+        val active = voiceMode != VoiceMode.REMOTE
+        val color = if (active) resolveColor(R.color.qs_accent) else resolveColor(R.color.qs_text_secondary)
+        val d = ContextCompat.getDrawable(this, R.drawable.ic_local_mode)?.mutate()
+        d?.setTint(color)
+        btn.setCompoundDrawablesRelativeWithIntrinsicBounds(d, null, null, null)
     }
 
     private suspend fun makeLocalRecognizer(prefs: SharedPreferences): SpeechRecognizer {
@@ -235,7 +331,8 @@ class VoiceOverlayService : Service() {
             onSessionEnd = { mainHandler.post { stopSelf() } }
         )
         controller = ctrl
-        scope.launch {
+        collectJob?.cancel()
+        collectJob = scope.launch {
             ctrl.state.collect { runOnUiThread { updateUi(it) } }
         }
         ctrl.start()
@@ -275,32 +372,9 @@ class VoiceOverlayService : Service() {
             }
             VoiceUiState.Finishing -> st.text = buildStatusText(getString(R.string.voice_committing))
             is VoiceUiState.Error -> {
-                if (voiceMode == VoiceMode.REMOTE && !isFallingBack && VoiceModelManager.isReady(this)) {
-                    VoiceLog.i(TAG, "remote failed, falling back to local model")
-                    isFallingBack = true
-                    voiceMode = VoiceMode.REMOTE_FALLBACK_LOCAL
-                    controller?.destroy()
-                    controller = null
-                    currentPrefs?.let { p ->
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                val rec = makeLocalRecognizer(p)
-                                runOnUiThread { createAndStartController { rec } }
-                            } catch (cancellation: CancellationException) {
-                                throw cancellation
-                            } catch (t: Throwable) {
-                                AppLog.e(TAG, "fallback to local model failed", t)
-                                mainHandler.post {
-                                    Toast.makeText(
-                                        this@VoiceOverlayService,
-                                        getString(R.string.voice_fallback_failed),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                    closeAndStop()
-                                }
-                            }
-                        }
-                    }
+                // 仅网络模式失败时自动回退本地（显示 [NL]）；已在本地的错误直接展示。
+                if (voiceMode == VoiceMode.REMOTE) {
+                    switchToLocalMode(VoiceMode.REMOTE_FALLBACK_LOCAL, "remote failed")
                     return
                 }
                 st.text = state.message
@@ -354,11 +428,21 @@ class VoiceOverlayService : Service() {
             setPadding(dp(12), dp(6), dp(10), dp(6))
             setOnClickListener { closeAndStop() }
         }
+        // 强制本地开关：仅当远端（网络）模式可用时显示，仅当前会话生效（关闭语音后随服务重置）。
+        val forceToggle = TextView(this).apply {
+            setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_local_mode, 0, 0, 0)
+            contentDescription = getString(R.string.voice_force_local_desc)
+            setPadding(dp(10), dp(8), dp(6), dp(8))
+            visibility = View.GONE
+            setOnClickListener { onForceLocalClicked() }
+        }
+        forceLocalToggle = forceToggle
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(8), dp(2), dp(6))
             addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT).apply { weight = 1f })
+            addView(forceToggle)
             addView(closeBtn)
         }
 
@@ -513,15 +597,20 @@ class VoiceOverlayService : Service() {
         pauseBtn = null
         backspaceBtn = null
         finishBtn = null
+        forceLocalToggle = null
     }
 
     override fun onDestroy() {
         VoiceLog.i(TAG, "onDestroy")
         runCatching { if (registered) remoteService?.unregisterInputWindowStateListener(inputWindowListener) }
         registered = false
+        collectJob?.cancel()
+        collectJob = null
         controller?.destroy()
         controller = null
         removeOverlay()
+        // 用户关闭语音输入：释放本会话加载的本地模型内存（含远端失败/强制本地的回退场景）。
+        runCatching { SherpaModelHolder.release() }
         runCatching { if (bound) { unbindService(connection); bound = false } }
         remoteService = null
         scope.cancel()

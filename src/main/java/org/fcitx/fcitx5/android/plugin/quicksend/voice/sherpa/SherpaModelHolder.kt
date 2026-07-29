@@ -96,7 +96,11 @@ object SherpaModelHolder {
     }
 
     /**
-     * 强制释放已加载模型（同步）。仅应在插件进程销毁时调用。
+     * 强制释放已加载模型（同步）。在语音悬浮窗关闭（[VoiceOverlayService.onDestroy]）时调用，
+     * 释放本会话加载的本地模型内存（含远端失败/强制本地的回退场景）。
+     *
+     * 安全性：[SherpaRecognizer.releaseNow] 只释放 stream/AudioRecord，不碰共享的 OnlineRecognizer，
+     * 由本方法唯一负责其原生句柄释放；调用前控制器已 join native 线程，无并发访问。
      */
     fun release() {
         synchronized(lock) {
