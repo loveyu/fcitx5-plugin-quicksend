@@ -27,7 +27,8 @@ import kotlin.random.Random
  * - 响应：JSON，code!=0 为错误（4002/4003 鉴权、4004/4005 配额、4006 并发满载、4008 超时可软结束）；
  *   code==0 取 sentences.sentence，sentence_type==1 视为本句 Final（提交），否则 Partial。
  */
-class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) : BaseWsStreamingRecognizer() {
+class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) :
+    BaseWsStreamingRecognizer(config.proxy) {
 
     override val tag: String = "TencentASR"
     override val requiresListeningState: Boolean = false
@@ -35,6 +36,7 @@ class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) : BaseWsSt
     private val voiceId: String = UUID.randomUUID().toString().replace("-", "")
 
     override fun buildRequest(): Request {
+        require(config.baseUrl.isNotBlank()) { "tencent baseUrl is empty" }
         val timestamp = System.currentTimeMillis() / 1000
         // 参与签名的参数（除 signature 外全部）。值用「原始值」拼签名串。
         val params = LinkedHashMap<String, String>().apply {
@@ -51,11 +53,11 @@ class TencentAsrV2Recognizer(private val config: TencentAsrV2Backend) : BaseWsSt
             put("convert_num_mode", config.convertNumMode.toString())
             if (config.hotwordList.isNotEmpty()) put("hotword_list", config.hotwordList)
         }
-        // 字典序拼接签名串（不含 wss://、不含 signature）→ HMAC-SHA1 签名 → 拼 URL
+        // 字典序拼接签名串（不含 scheme、不含 signature）→ HMAC-SHA1 签名 → 拼 URL
         val sorted = params.toList().sortedBy { it.first }
-        val signString = TencentV2Signing.buildSignString(config.appId, sorted)
+        val signString = TencentV2Signing.buildSignString(config.baseUrl, config.appId, sorted)
         val signature = TencentV2Signing.signature(config.secretKey, signString)
-        val url = TencentV2Signing.buildUrl(config.appId, sorted, signature)
+        val url = TencentV2Signing.buildUrl(config.baseUrl, config.appId, sorted, signature)
         VoiceLog.i(tag, "wss to appid=${config.appId.takeMasked()} engine=${config.engineModelType} fmt=${config.voiceFormat}")
         return Request.Builder().url(url).build()
     }

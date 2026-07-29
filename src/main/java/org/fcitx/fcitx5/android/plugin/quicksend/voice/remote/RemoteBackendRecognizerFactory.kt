@@ -12,6 +12,6 @@ import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.tencent.TencentAsr
  * 把一个 [RemoteBackend] 配置造出对应的 [SpeechRecognizer]。新增后端类型时在此加一个分支即可。
  */
 fun RemoteBackend.recognizer(): SpeechRecognizer = when (this) {
-    is StreamingAsrServerBackend -> StreamingAsrServerRecognizer(url, token.ifBlank { null })
+    is StreamingAsrServerBackend -> StreamingAsrServerRecognizer(url, token.ifBlank { null }, proxy)
     is TencentAsrV2Backend -> TencentAsrV2Recognizer(this)
 }

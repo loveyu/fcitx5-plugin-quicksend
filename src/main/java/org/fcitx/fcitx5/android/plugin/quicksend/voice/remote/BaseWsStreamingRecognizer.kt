@@ -28,6 +28,8 @@ import org.fcitx.fcitx5.android.plugin.quicksend.voice.RecognitionEvent
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.RemoteAsrException
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.SpeechRecognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceLog
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.ProxyConfig
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.applyProxy
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -39,15 +41,21 @@ import java.util.concurrent.TimeUnit
  * - 所有 stream/AudioRecord 原生对象只在唯一 nativeThread 上创建/使用/释放；
  * - stop/cancel/releaseNow 仅翻 @Volatile 标志并 join nativeThread，绝不跨线程接触原生对象；
  * - 「完成」按钮的 stop() 内 join 切到 IO（[awaitNativeThread]），避免阻塞主线程。
+ *
+ * [proxyUri] 为可选代理（http://host:port 或 socks5://user:pass@host:port），与模型下载同源逻辑。
  */
-abstract class BaseWsStreamingRecognizer : SpeechRecognizer {
+abstract class BaseWsStreamingRecognizer(
+    private val proxyUri: String = ""
+) : SpeechRecognizer {
 
     protected val sampleRate = 16000
     protected val eventChannel = Channel<RecognitionEvent>(Channel.BUFFERED)
+    private val proxyConfig = ProxyConfig.fromUri(proxyUri)
     protected val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
+        .applyProxy(proxyConfig)
         .build()
 
     @Volatile protected var running = false

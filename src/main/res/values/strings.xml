@@ -137,6 +137,9 @@
     <string name="streaming_field_token">鉴权 Token（可选）</string>
 
     <!-- tencent-asr-v2 字段 -->
+    <string name="tencent_field_baseurl">服务地址（如 wss://asr.cloud.tencent.com/asr/v2）</string>
+    <string name="tencent_copy_default">复制默认地址（wss://asr.cloud.tencent.com/asr/v2）</string>
+    <string name="tencent_default_copied">已复制默认地址，粘贴到上方输入框</string>
     <string name="tencent_field_appid">AppID</string>
     <string name="tencent_field_secretid">SecretId</string>
     <string name="tencent_field_secretkey">SecretKey</string>
@@ -147,6 +150,9 @@
     <string name="tencent_field_filter_modal">口头禅过滤（0/1/2，默认 0）</string>
     <string name="tencent_field_convert_num">数字转换（0/1/3，默认 1）</string>
     <string name="tencent_field_hotword">热词表（word|weight,word|weight，可选）</string>
+
+    <!-- 通用：每个远端的代理 -->
+    <string name="remote_field_proxy">代理（http://127.0.0.1:7890 或 socks5://host:1080，可选）</string>
 
     <!-- 单后端测试 -->
     <string name="remote_test">测试</string>

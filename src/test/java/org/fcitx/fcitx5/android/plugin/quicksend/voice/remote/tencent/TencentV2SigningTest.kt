@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.tencent
 
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.TencentAsrV2Backend
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,15 +13,16 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * 腾讯 ASR V2 客户端签名的纯 JVM 单测（验证签名串格式 + HMAC-SHA1/Base64 与 JDK 标准一致）。
+ * 腾讯 ASR V2 客户端签名的纯 JVM 单测（验证签名串格式 + HMAC-SHA1/Base64 与 JDK 标准一致
+ * + 可自定义服务地址）。
  */
 class TencentV2SigningTest {
 
     @Test
-    fun signString_format_isCorrect() {
+    fun signString_format_isCorrect_withDefaultBaseUrl() {
         // 参数需已按 key 字典序传入（识别器内 sortedBy 后调用）
         val s = TencentV2Signing.buildSignString(
-            "1250000",
+            TencentAsrV2Backend.DEFAULT_BASE_URL, "1250000",
             listOf(
                 "engine_model_type" to "16k_zh_en_2.0",
                 "secretid" to "AKIDx",
@@ -28,7 +30,7 @@ class TencentV2SigningTest {
                 "voice_id" to "abc"
             )
         )
-        // 不含 wss://、不含 signature；appid 在路径；参数 k=v 以 & 连接
+        // 不含 scheme、不含 signature；host/path/<appid>；参数 k=v 以 & 连接
         assertEquals(
             "asr.cloud.tencent.com/asr/v2/1250000?engine_model_type=16k_zh_en_2.0&secretid=AKIDx&timestamp=1000&voice_id=abc",
             s
@@ -36,10 +38,35 @@ class TencentV2SigningTest {
     }
 
     @Test
+    fun signString_usesCustomBaseUrl_hostOnly() {
+        // 自定义地址（无 scheme）→ 默认 wss；签名串仍不含 scheme
+        val s = TencentV2Signing.buildSignString(
+            "asr.tencentcloudapi.com/asr/v2", "1",
+            listOf("secretid" to "AKIDx", "timestamp" to "1000")
+        )
+        assertEquals(
+            "asr.tencentcloudapi.com/asr/v2/1?secretid=AKIDx&timestamp=1000",
+            s
+        )
+    }
+
+    @Test
+    fun buildUrl_usesCustomBaseUrl_schemeAndHost() {
+        val sorted = listOf("secretid" to "AKIDx", "timestamp" to "1000")
+        val sig = TencentV2Signing.signature(
+            "k", TencentV2Signing.buildSignString("wss://example.com/asr/v2", "1", sorted)
+        )
+        val url = TencentV2Signing.buildUrl("wss://example.com/asr/v2", "1", sorted, sig)
+        assertTrue(url.startsWith("wss://example.com/asr/v2/1?"))
+        assertTrue(url.contains("&signature="))
+    }
+
+    @Test
     fun signature_matchesJdkHmacSha1Base64() {
         val key = "mySecretKey"
         val data = TencentV2Signing.buildSignString(
-            "1250000", listOf("secretid" to "AKIDx", "timestamp" to "1000")
+            TencentAsrV2Backend.DEFAULT_BASE_URL, "1250000",
+            listOf("secretid" to "AKIDx", "timestamp" to "1000")
         )
         val ours = TencentV2Signing.signature(key, data)
 
@@ -68,9 +95,10 @@ class TencentV2SigningTest {
     @Test
     fun buildUrl_containsUrlEncodedSignature() {
         val sorted = listOf("secretid" to "AKID x", "timestamp" to "1000")
-        // 故意构造会产生特殊字符的签名输入
-        val sig = TencentV2Signing.signature("k", TencentV2Signing.buildSignString("1", sorted))
-        val url = TencentV2Signing.buildUrl("1", sorted, sig)
+        val sig = TencentV2Signing.signature(
+            "k", TencentV2Signing.buildSignString(TencentAsrV2Backend.DEFAULT_BASE_URL, "1", sorted)
+        )
+        val url = TencentV2Signing.buildUrl(TencentAsrV2Backend.DEFAULT_BASE_URL, "1", sorted, sig)
         assertTrue(url.startsWith("wss://asr.cloud.tencent.com/asr/v2/1?"))
         // signature 段必须存在且原 sig 经 URL 编码后出现在末尾
         assertTrue(url.contains("&signature="))

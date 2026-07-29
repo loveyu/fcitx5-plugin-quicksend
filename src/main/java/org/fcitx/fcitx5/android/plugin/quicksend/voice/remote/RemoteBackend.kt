@@ -27,6 +27,9 @@ sealed interface RemoteBackend {
     val enable: Boolean
     val tested: Boolean
 
+    /** 代理 URI（http://host:port 或 socks5://user:pass@host:port；空=不使用）。 */
+    val proxy: String
+
     /** 返回带更新 tested 标记的副本（保持各自类型），用于测试回写。 */
     fun withTested(tested: Boolean): RemoteBackend
 
@@ -45,6 +48,7 @@ data class StreamingAsrServerBackend(
     override val name: String,
     override val enable: Boolean = false,
     override val tested: Boolean = false,
+    override val proxy: String = "",
     val url: String = "",
     val token: String = "",
 ) : RemoteBackend {
@@ -65,6 +69,9 @@ data class TencentAsrV2Backend(
     override val name: String,
     override val enable: Boolean = false,
     override val tested: Boolean = false,
+    override val proxy: String = "",
+    /** 服务地址（含 scheme，不含 appid/参数）。留空=未配置，必填。默认见 [DEFAULT_BASE_URL]。 */
+    val baseUrl: String = "",
     val appId: String = "",
     val secretId: String = "",
     val secretKey: String = "",
@@ -79,14 +86,17 @@ data class TencentAsrV2Backend(
     override fun withTested(tested: Boolean): RemoteBackend = copy(tested = tested)
     override fun withEnable(enable: Boolean): RemoteBackend = copy(enable = enable)
 
-    private companion object {
+    companion object {
+        /** 腾讯实时语音识别 V2 默认服务地址（用户可改，设置页有「复制默认」按钮）。 */
+        const val DEFAULT_BASE_URL = "wss://asr.cloud.tencent.com/asr/v2"
+
         // 引擎模型：中英粤 + 31 方言（大模型 2.0，无说话人分离）
-        const val DEFAULT_ENGINE_MODEL_TYPE = "16k_zh_en_2.0"
+        internal const val DEFAULT_ENGINE_MODEL_TYPE = "16k_zh_en_2.0"
         // 1 = PCM（客户端直采，无需编码）
-        const val DEFAULT_VOICE_FORMAT = 1
-        const val DEFAULT_NEED_VAD = 1
-        const val DEFAULT_FILTER_DIRTY = 0
-        const val DEFAULT_FILTER_MODAL = 0
-        const val DEFAULT_CONVERT_NUM_MODE = 1
+        internal const val DEFAULT_VOICE_FORMAT = 1
+        internal const val DEFAULT_NEED_VAD = 1
+        internal const val DEFAULT_FILTER_DIRTY = 0
+        internal const val DEFAULT_FILTER_MODAL = 0
+        internal const val DEFAULT_CONVERT_NUM_MODE = 1
     }
 }

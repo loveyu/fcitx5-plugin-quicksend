@@ -22,8 +22,9 @@ import org.json.JSONObject
  */
 class StreamingAsrServerRecognizer(
     private val serverUrl: String,
-    private val authToken: String?
-) : BaseWsStreamingRecognizer() {
+    private val authToken: String?,
+    proxyUri: String = ""
+) : BaseWsStreamingRecognizer(proxyUri) {
 
     override val tag: String = "RemoteASR"
     override val requiresListeningState: Boolean = true

@@ -33,7 +33,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -59,6 +61,7 @@ fun RemoteBackendEditDrawer(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // 以 backend.id 为 key，切换编辑对象时整体重置表单状态
@@ -67,6 +70,8 @@ fun RemoteBackendEditDrawer(
 
     var name by remember(backend.id) { mutableStateOf(backend.name) }
     var enable by remember(backend.id) { mutableStateOf(backend.enable) }
+    var proxy by remember(backend.id) { mutableStateOf(backend.proxy) }
+    var baseUrl by remember(backend.id) { mutableStateOf(tencent?.baseUrl ?: "") }
     var url by remember(backend.id) { mutableStateOf(streaming?.url ?: "") }
     var token by remember(backend.id) { mutableStateOf(streaming?.token ?: "") }
     var appId by remember(backend.id) { mutableStateOf(tencent?.appId ?: "") }
@@ -83,13 +88,18 @@ fun RemoteBackendEditDrawer(
     fun buildSaved(): RemoteBackend? = when (backend) {
         is StreamingAsrServerBackend -> {
             if (url.isBlank()) null
-            else backend.copy(name = name.trim().ifBlank { "streaming-asr-server" }, enable = enable, url = url.trim(), token = token.trim())
+            else backend.copy(
+                name = name.trim().ifBlank { "streaming-asr-server" },
+                enable = enable, proxy = proxy.trim(),
+                url = url.trim(), token = token.trim()
+            )
         }
         is TencentAsrV2Backend -> {
-            if (appId.isBlank() || secretId.isBlank() || secretKey.isBlank()) null
+            if (baseUrl.isBlank() || appId.isBlank() || secretId.isBlank() || secretKey.isBlank()) null
             else backend.copy(
                 name = name.trim().ifBlank { "tencent-asr-v2" },
-                enable = enable,
+                enable = enable, proxy = proxy.trim(),
+                baseUrl = baseUrl.trim(),
                 appId = appId.trim(),
                 secretId = secretId.trim(),
                 secretKey = secretKey.trim(),
@@ -157,6 +167,15 @@ fun RemoteBackendEditDrawer(
                     )
                 }
                 is TencentAsrV2Backend -> {
+                    OutlinedTextField(
+                        value = baseUrl, onValueChange = { baseUrl = it },
+                        label = { Text(stringResource(R.string.tencent_field_baseurl)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(TencentAsrV2Backend.DEFAULT_BASE_URL))
+                        toast(context, R.string.tencent_default_copied)
+                    }) { Text(stringResource(R.string.tencent_copy_default)) }
                     OutlinedTextField(value = appId, onValueChange = { appId = it }, label = { Text(stringResource(R.string.tencent_field_appid)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = secretId, onValueChange = { secretId = it }, label = { Text(stringResource(R.string.tencent_field_secretid)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = secretKey, onValueChange = { secretKey = it }, label = { Text(stringResource(R.string.tencent_field_secretkey)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
@@ -169,6 +188,12 @@ fun RemoteBackendEditDrawer(
                     OutlinedTextField(value = hotword, onValueChange = { hotword = it }, label = { Text(stringResource(R.string.tencent_field_hotword)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             }
+
+            OutlinedTextField(
+                value = proxy, onValueChange = { proxy = it },
+                label = { Text(stringResource(R.string.remote_field_proxy)) },
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
 
             Text(
                 text = stringResource(R.string.remote_test_hint),
