@@ -64,6 +64,15 @@ class AppearanceActivity : Activity() {
         binding.presetsLightButton.setOnClickListener { showPresetsDialog(isLight = true) }
         binding.presetsDarkButton.setOnClickListener { showPresetsDialog(isLight = false) }
 
+        binding.resetPositionButton.setOnClickListener {
+            prefs.edit()
+                .remove(QuickSendPrefs.OVERLAY_GRAVITY)
+                .remove(QuickSendPrefs.OVERLAY_X)
+                .remove(QuickSendPrefs.OVERLAY_Y)
+                .apply()
+            android.widget.Toast.makeText(this, R.string.reset_overlay_done, android.widget.Toast.LENGTH_SHORT).show()
+        }
+
         refreshPreviewLight()
         refreshPreviewDark()
     }

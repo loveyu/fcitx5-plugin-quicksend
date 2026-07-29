@@ -31,6 +31,8 @@
     <string name="overlay_disabled_hint">已关闭悬浮发送按钮</string>
     <string name="overlay_list_title">快捷发送</string>
     <string name="overlay_drag_mode">拖拽</string>
+    <string name="reset_overlay_position">重置悬浮按钮位置</string>
+    <string name="reset_overlay_done">已重置</string>
     <string name="overlay_close">关闭</string>
     <string name="overlay_open_settings">设置</string>
     <string name="overlay_button_text">悬浮按钮文字</string>

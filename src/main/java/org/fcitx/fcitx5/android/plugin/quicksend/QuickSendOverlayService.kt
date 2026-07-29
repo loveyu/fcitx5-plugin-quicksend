@@ -292,6 +292,17 @@ class QuickSendOverlayService : android.app.Service() {
         buttonGravity = prefs.getInt(QuickSendPrefs.OVERLAY_GRAVITY, Gravity.END or Gravity.BOTTOM)
         buttonX = prefs.getInt(QuickSendPrefs.OVERLAY_X, dp(6))
         buttonY = prefs.getInt(QuickSendPrefs.OVERLAY_Y, dp(40))
+
+        val metrics = resources.displayMetrics
+        val maxOffset = metrics.run { maxOf(widthPixels, heightPixels) }
+        if (buttonX < -dp(200) || buttonX > maxOffset) {
+            buttonX = dp(6)
+            buttonGravity = (buttonGravity and Gravity.VERTICAL_GRAVITY_MASK) or Gravity.END
+        }
+        if (buttonY < -dp(200) || buttonY > maxOffset) {
+            buttonY = dp(40)
+            buttonGravity = (buttonGravity and Gravity.HORIZONTAL_GRAVITY_MASK) or Gravity.BOTTOM
+        }
     }
 
     private fun savePosition() {
@@ -323,8 +334,11 @@ class QuickSendOverlayService : android.app.Service() {
                 val dx = (event.rawX - dragStartRawX).toInt()
                 val dy = (event.rawY - dragStartRawY).toInt()
                 val lp = view.layoutParams as WindowManager.LayoutParams
-                lp.x = dragStartLayoutX + dx
-                lp.y = dragStartLayoutY + dy
+                val metrics = resources.displayMetrics
+                val btnW = view.width.takeIf { it > 0 } ?: dp(76)
+                val btnH = view.height.takeIf { it > 0 } ?: dp(76)
+                lp.x = (dragStartLayoutX + dx).coerceIn(0, metrics.widthPixels - btnW)
+                lp.y = (dragStartLayoutY + dy).coerceIn(0, metrics.heightPixels - btnH)
                 windowManager?.updateViewLayout(view, lp)
                 return true
             }
@@ -443,10 +457,9 @@ class QuickSendOverlayService : android.app.Service() {
             contentDescription = getString(R.string.overlay_close)
             setOnClickListener { hideList() }
         }
-        val dragModeBtn = TextView(this).apply {
-            text = getString(R.string.overlay_drag_mode)
-            setTextColor(resolveColor(R.color.qs_accent))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        val dragModeBtn = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_drag_handle)
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(dp(8), dp(6), dp(8), dp(6))
             contentDescription = getString(R.string.overlay_drag_mode)
             setOnClickListener {
