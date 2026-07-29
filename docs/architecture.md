@@ -53,8 +53,8 @@ bindService(.plugin.SERVICE, perm.PLUGIN) ──▶ MainService.onBind()
 | `SherpaRecognizer` | 按预加载模型创建 stream + AudioRecord，暂停/恢复保留 stream 零延迟 |
 | `VoiceModelManager` | 模型文件下载/校验（HuggingFace，可换源/代理） |
 | `VoiceLog` | 调试日志，2MB 自动轮转 |
-| `RemoteBackend` / `RemoteBackendStore` | 远端 ASR 多后端配置（sealed：streaming-asr-server / tencent-asr-v2）+ JSON 数组持久化；`activeBackends()` 给运行时优先级链 |
-| `BaseWsStreamingRecognizer` | 远端流式识别器基类（16k PCM 直采 + 单 nativeThread + 收尾/软结束/错误分类模板方法）；子类 `StreamingAsrServerRecognizer` / `TencentAsrV2Recognizer` 实现协议差异 |
+| `RemoteBackend` / `RemoteBackendStore` | 远端 ASR 多后端配置（sealed：streaming-asr-server / tencent-asr-v1 / tencent-asr-v2；V1/V2 公共字段抽到 `TencentAsrBackend` 接口）+ JSON 数组持久化；`activeBackends()` 给运行时优先级链 |
+| `BaseWsStreamingRecognizer` | 远端流式识别器基类（16k PCM 直采 + 单 nativeThread + 收尾/软结束/错误分类模板方法 + `stableText` 多句累积助手）；子类 `StreamingAsrServerRecognizer` / `TencentAsrV1Recognizer` / `TencentAsrV2Recognizer` 实现协议差异 |
 | `RemoteAsrSettingsActivity` | 远端设置页（Compose + Material3）：列表（启用在前 + 拖拽排序）+ 底部抽屉编辑 + 单后端测试 |
 
 ## 数据层（QuickSend）

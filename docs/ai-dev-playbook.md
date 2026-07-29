@@ -9,7 +9,7 @@
 fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL IPC 与 fcitx5-android **主程序（host）**通信。两个功能：
 
 - **QuickSend**：发送预设按键组合 / 文本（如 `Ctrl+Shift+Del`），条目存 Room。
-- **语音输入**：Sherpa-ONNX 本地流式中文识别 + 可选远端多后端 ASR（streaming-asr-server / 腾讯实时 V2），浮层驱动。
+- **语音输入**：Sherpa-ONNX 本地流式中文识别 + 可选远端多后端 ASR（streaming-asr-server / 腾讯实时 V1 通用引擎 / 腾讯实时 V2 大模型引擎），浮层驱动。
 
 **最高频认知**：发送按键 / 文本 / 语音注入**都不在本进程完成**，而是经 IPC 调用 host 的 `IQuickSendService`。host 不实现对应方法 → 远程调用失败。改 IPC 接口**两边都要改**（host fork 在姐妹目录，IPC 代码在其 `release` 分支）。
 
@@ -53,7 +53,7 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 - **模型首次加载数秒**（`SherpaModelHolder.getOrLoad`，进程级单例常驻内存）；初始启动经 `VoiceController.start()` 内部加载，`Initializing` 状态天然覆盖加载期。
 - **远端失败回退策略**：远端为**多后端优先级链**（`enable && tested`，按存储顺序）。链未耗尽时当前后端失败即试下一个；链耗尽后远端鉴权失败（`RemoteAuth`，含腾讯 4002/4003/4004/4005）/ 满载（`RemoteOverload`，腾讯 4006）**不静默回退本地**，明确提示 + Toast；仅 `Generic`（网络不通等）自动回退本地（`[NL]`，红色 N）。用户可随时点顶部「强制本地」手动切本地。
 - **模型下载被墙**：设置页改模型 base URL（切镜像）或配代理 URI（prefs `voice_proxy_uri`，如 `http://127.0.0.1:7890`、`socks5://host:1080`）。识别本身本地、不走网络。
-- **远端多后端配置**：主菜单「远端语音识别」→ Compose 设置页（`RemoteAsrSettingsActivity`），支持 streaming-asr-server / tencent-asr-v2 两类，列表「启用在前 + 长按拖拽排序」，底部抽屉编辑 + 单后端测试（说「测试」回写 `tested`）。配置存 `voice_remote_backends`（JSON 数组），旧的 `voice_remote_*` 三键已丢弃不迁移。
+- **远端多后端配置**：主菜单「远端语音识别」→ Compose 设置页（`RemoteAsrSettingsActivity`），支持 streaming-asr-server / tencent-asr-v1（通用引擎，默认 `16k_zh`）/ tencent-asr-v2（仅大模型引擎）三类，列表「启用在前 + 长按拖拽排序」，底部抽屉编辑 + 单后端测试（说「测试」回写 `tested`）。V1/V2 同址同签名，公共字段抽到 `TencentAsrBackend` 接口。配置存 `voice_remote_backends`（JSON 数组），旧的 `voice_remote_*` 三键已丢弃不迁移。**⚠️ 改腾讯识别器务必守「Final = 会话结束」铁律**：稳态句只累积（`appendStable`）+ Partial，会话结束才一次 `markFinal`，否则首句终止会话 + 重复提交。
 
 → 语音管线、状态机、模型管理、识别参数完整细节见 [voice-subsystem.md](voice-subsystem.md)。
 
@@ -70,7 +70,7 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 ## 5. 日志与调试
 
 - `VoiceLog` / `AppLog` 落**应用专用外部目录**文件（`VoiceLog` 2MB 自动轮转），语音设置页右上角 → 调试日志设置页可清空 / 分享（经 `FileProvider`）、开 `LOG_DEBUG_ENABLED`（同时落盘 + logcat，默认关，仅 WARN+）。
-- **logcat tag 速查**（非穷尽）：`QuickSendMainService`（绑定）/ `QuickSendExecutor`（发送）/ `VoiceCtrl`（语音编排）/ `SherpaRec`（本地识别）/ `ModelHolder`（模型加载）/ `RemoteASR`（streaming-asr-server 识别）/ `TencentASR`（腾讯 V2 识别）/ `VoiceOverlay`（语音浮层）/ `VoiceModel`（模型下载）。
+- **logcat tag 速查**（非穷尽）：`QuickSendMainService`（绑定）/ `QuickSendExecutor`（发送）/ `VoiceCtrl`（语音编排）/ `SherpaRec`（本地识别）/ `ModelHolder`（模型加载）/ `RemoteASR`（streaming-asr-server 识别）/ `TencentASRv1`（腾讯 V1 识别）/ `TencentASR`（腾讯 V2 识别）/ `VoiceOverlay`（语音浮层）/ `VoiceModel`（模型下载）。
 - 联调「发送没反应」：先 logcat 过 `QuickSendExecutor`/`QuickSendMainService` 看 `Remote service not connected` / `Send failed`，再排查 host 实现 / 签名 / 三路绑定。
 
 ## 6. 协作规范（AI 写代码 / 文档时遵守）

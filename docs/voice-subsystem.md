@@ -118,11 +118,12 @@ host 语音按钮
 
 远端不再是单后端 + 三键 prefs，而是**可插拔多后端**体系：
 
-- **配置模型** `RemoteBackend`（sealed，`voice/remote/RemoteBackend.kt`）：`StreamingAsrServerBackend`（自建 streaming-asr-server）/ `TencentAsrV2Backend`（腾讯实时语音识别 V2）。公共字段 `id/name/enable/tested`；新增类型再加一个 data class + 识别器即可（kotlinx-serialization 自动带 `type` 判别）。
+- **配置模型** `RemoteBackend`（sealed，`voice/remote/RemoteBackend.kt`）：`StreamingAsrServerBackend`（自建 streaming-asr-server）/ `TencentAsrV1Backend`（腾讯实时语音识别 V1，**通用引擎**，默认 `16k_zh`）/ `TencentAsrV2Backend`（腾讯实时语音识别 V2，**仅大模型引擎**，默认 `16k_zh_en_2.0`）。V1/V2 字段同构，公共部分抽到 `TencentAsrBackend` 接口供 UI 共享表单。公共字段 `id/name/enable/tested`；新增类型再加一个 data class + 识别器即可（kotlinx-serialization 自动带 `type` 判别）。
 - **持久化** `RemoteBackendStore`（`voice/remote/RemoteBackendStore.kt`）：JSON 数组存 `QuickSendPrefs.VOICE_REMOTE_BACKENDS`。`activeBackends()` = `enable && tested`，按存储顺序（= 优先级）。
-- **识别器**：`BaseWsStreamingRecognizer`（`voice/remote/`）抽公共骨架（16k PCM 直采 + 单 nativeThread + 收尾/软结束/错误分类模板方法）；`StreamingAsrServerRecognizer` / `TencentAsrV2Recognizer`（`voice/remote/{streaming,tencent}/`）实现协议差异。`RemoteBackend.recognizer()` 工厂映射配置→识别器。
+- **识别器**：`BaseWsStreamingRecognizer`（`voice/remote/`）抽公共骨架（16k PCM 直采 + 单 nativeThread + 收尾/软结束/错误分类模板方法 + `stableText`/`appendStable`/`setPartial` 多句累积助手）；`StreamingAsrServerRecognizer` / `TencentAsrV1Recognizer` / `TencentAsrV2Recognizer`（`voice/remote/{streaming,tencent}/`）实现协议差异。`RemoteBackend.recognizer()` 工厂映射配置→识别器。
 - **链式回退**（在 `VoiceOverlayService`）：会话开始取 `activeBackends()` 为优先级链；当前后端失败且链未耗尽 → 试下一个；链耗尽后 `ErrorKind.Generic` → 回退本地（`[NL]`），`RemoteAuth/RemoteOverload` → 仅提示不静默回退（与原单后端语义一致）。无后端 → 直接本地。
-- **腾讯 V2 客户端直连**：签名（HMAC-SHA1+Base64）在客户端算，拼进 `wss://asr.cloud.tencent.com/asr/v2/<appid>?<字典序参数>&signature=<urlencode>`。签名逻辑抽到纯 JVM 的 `TencentV2Signing`（自带 base64，便于单测，避开 minSdk 24 与 java.util.Base64 需 API 26 的冲突）。`sentence_type==1`→Final、否则 Partial；code 4002/4003/4004/4005→鉴权、4006→满载、4008→软结束。
+- **腾讯客户端直连（V1/V2 共用签名）**：签名（HMAC-SHA1+Base64）在客户端算，拼进 `wss://asr.cloud.tencent.com/asr/v2/<appid>?<字典序参数>&signature=<urlencode>`。V1 与 V2 **同址、同签名算法**，逻辑抽到纯 JVM 的 `TencentV2Signing`（自带 base64，便于单测，避开 minSdk 24 与 java.util.Base64 需 API 26 的冲突）。差异只在响应：V1 按 `result.slice_type`（2=稳态）/`voice_text_str`，V2 按 `sentences.sentence_type`（1=稳态）。code 4002/4003/4004/4005→鉴权、4006→满载、4008→软结束。
+- **⚠️ Final = 会话结束（多句累积铁律）**：`VoiceController.handle(Final)` 提交后**必定** `endSession()`（→ `stopSelf`），且 `BaseWsStreamingRecognizer.stop()` 只在 `finalResult` 完成后下发**一次** Final。故按句返回的后端（腾讯 V1/V2）**绝不能逐句发 Final**——否则首句就终止会话（后续句丢失）并重复提交。正确做法：稳态句 `appendStable` 只更新展示（Partial），累积到 `stableText`；会话结束（`final==1` 或 stop 超时软结束）才 `markFinal(Final(全量稳态))` 一次性提交，与 Sherpa/streaming-asr-server「单 Final」语义一致。
 - **设置页**：`RemoteAsrSettingsActivity`（Compose + Material3，列表「启用在前 + 长按拖拽排序」+ 底部抽屉编辑按类型填参 + 单后端测试）。入口在主菜单「远端语音识别」（不再埋在本地语音输入页）。
 - **单后端测试**：设置页点「测试」→ 先 upsert（稳定 id）→ 序列化后端 → `startForegroundService(VoiceOverlayService, ACTION_START, EXTRA_TEST_MODE=true, EXTRA_TEST_BACKEND_JSON)`。测试模式跳过模型就绪/启用判断、不响应输入窗隐藏、`VoiceController.onFinalResult` 旁路 host 注入；final 含「测试」→ `RemoteBackendStore.setTested(id, true)` + Toast。
 
