@@ -227,6 +227,11 @@ class VoiceOverlayService : Service() {
         voiceMode = displayMode
         updateForceLocalToggle()
         teardownCurrentController()
+        // 模型首次加载耗时数秒，此期间已无 controller 驱动 UI；手动刷新为本地「初始化中」，
+        // 否则状态文本会冻结在切换前的「[N]正在聆听」，误导用户以为网络仍在识别
+        // （此时网络已断、本地尚未就绪）。voiceMode 已改为 LOCAL/REMOTE_FALLBACK_LOCAL，
+        // buildStatusText 据此生成 [L]/[NL] 前缀，随后新 controller 的 Listening 自然衔接。
+        runOnUiThread { updateUi(VoiceUiState.Initializing) }
         scope.launch(Dispatchers.IO) {
             try {
                 val rec = makeLocalRecognizer(prefs)
@@ -257,6 +262,9 @@ class VoiceOverlayService : Service() {
         voiceMode = VoiceMode.REMOTE
         updateForceLocalToggle()
         teardownCurrentController()
+        // 与切本地对称：teardown 后到新 controller 接管前先显示「[N]初始化中」，
+        // 避免冻结在切换前的本地状态文案；WebSocket 握手期间亦同。
+        runOnUiThread { updateUi(VoiceUiState.Initializing) }
         createAndStartController { RemoteSpeechRecognizer(url, token) }
     }
 
