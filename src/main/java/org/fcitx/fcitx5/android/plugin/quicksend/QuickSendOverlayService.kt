@@ -75,7 +75,27 @@ class QuickSendOverlayService : android.app.Service() {
     private var dragStartRawY = 0f
     private var dragStartLayoutX = 0
     private var dragStartLayoutY = 0
-    private var hasMoved = false
+    private var isDragMode = false
+
+    private val dragEnterRunnable = Runnable {
+        val btn = buttonView ?: return@Runnable
+        isDragMode = true
+        val location = IntArray(2)
+        btn.getLocationOnScreen(location)
+        val lp = btn.layoutParams as WindowManager.LayoutParams
+        lp.gravity = Gravity.START or Gravity.TOP
+        lp.x = location[0]
+        lp.y = location[1]
+        windowManager?.updateViewLayout(btn, lp)
+        dragStartLayoutX = location[0]
+        dragStartLayoutY = location[1]
+        applyDragBorder(btn as TextView)
+    }
+
+    private val dragExitRunnable = Runnable {
+        isDragMode = false
+        (buttonView as? TextView)?.let { removeDragBorder(it) }
+    }
 
     private var remoteService: IQuickSendService? = null
     private var registered = false
@@ -91,7 +111,12 @@ class QuickSendOverlayService : android.app.Service() {
 
     private val prefsChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key in colorKeys) {
-            buttonView?.let { mainHandler.post { applyButtonColors(it as TextView) } }
+            buttonView?.let { btn ->
+                mainHandler.post {
+                    applyButtonColors(btn as TextView)
+                    if (isDragMode) applyDragBorder(btn as TextView)
+                }
+            }
         }
     }
 
@@ -116,6 +141,26 @@ class QuickSendOverlayService : android.app.Service() {
             setSize(size, size)
         }
         btn.setTextColor(text)
+    }
+
+    private fun applyDragBorder(btn: TextView) {
+        val (bg, _) = resolveButtonColors()
+        val borderColor = if (isNightMode()) {
+            Color.argb(255, 255, 80, 80)
+        } else {
+            Color.RED
+        }
+        btn.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(bg)
+            val size = dp(48)
+            setSize(size, size)
+            setStroke(dp(3), borderColor)
+        }
+    }
+
+    private fun removeDragBorder(btn: TextView) {
+        applyButtonColors(btn)
     }
 
     /** 由主项目回调（binder 线程），转发到主线程操作窗口视图。 */
@@ -177,6 +222,8 @@ class QuickSendOverlayService : android.app.Service() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(dragEnterRunnable)
+        mainHandler.removeCallbacks(dragExitRunnable)
         removeAll()
         runCatching { prefs.unregisterOnSharedPreferenceChangeListener(prefsChangeListener) }
         runCatching { if (registered) remoteService?.unregisterInputWindowStateListener(listener) }
@@ -260,42 +307,43 @@ class QuickSendOverlayService : android.app.Service() {
             MotionEvent.ACTION_DOWN -> {
                 dragStartRawX = event.rawX
                 dragStartRawY = event.rawY
-                hasMoved = false
-                val location = IntArray(2)
-                view.getLocationOnScreen(location)
-                val lp = view.layoutParams as WindowManager.LayoutParams
-                lp.gravity = Gravity.START or Gravity.TOP
-                lp.x = location[0]
-                lp.y = location[1]
-                windowManager?.updateViewLayout(view, lp)
-                dragStartLayoutX = location[0]
-                dragStartLayoutY = location[1]
+                mainHandler.removeCallbacks(dragExitRunnable)
+                mainHandler.postDelayed(dragEnterRunnable, 2000L)
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
+                if (!isDragMode) {
+                    val dx = Math.abs((event.rawX - dragStartRawX).toInt())
+                    val dy = Math.abs((event.rawY - dragStartRawY).toInt())
+                    if (dx > dp(4) || dy > dp(4)) {
+                        mainHandler.removeCallbacks(dragEnterRunnable)
+                    }
+                    return true
+                }
                 val dx = (event.rawX - dragStartRawX).toInt()
                 val dy = (event.rawY - dragStartRawY).toInt()
-                if (!hasMoved && (Math.abs(dx) > dp(4) || Math.abs(dy) > dp(4))) {
-                    hasMoved = true
-                }
-                if (hasMoved) {
-                    val lp = view.layoutParams as WindowManager.LayoutParams
-                    lp.x = dragStartLayoutX + dx
-                    lp.y = dragStartLayoutY + dy
-                    windowManager?.updateViewLayout(view, lp)
-                }
+                val lp = view.layoutParams as WindowManager.LayoutParams
+                lp.x = dragStartLayoutX + dx
+                lp.y = dragStartLayoutY + dy
+                windowManager?.updateViewLayout(view, lp)
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                if (hasMoved) {
+                mainHandler.removeCallbacks(dragEnterRunnable)
+                if (isDragMode) {
                     finalizePosition(view)
+                    mainHandler.postDelayed(dragExitRunnable, 1000L)
                 } else {
                     if (listPopup != null) hideList() else showList()
                 }
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
-                finalizePosition(view)
+                mainHandler.removeCallbacks(dragEnterRunnable)
+                if (isDragMode) {
+                    finalizePosition(view)
+                    mainHandler.postDelayed(dragExitRunnable, 1000L)
+                }
                 return true
             }
         }

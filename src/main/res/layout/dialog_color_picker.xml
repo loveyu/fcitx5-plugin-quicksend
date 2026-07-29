@@ -46,24 +46,8 @@
 
             <FrameLayout
                 android:id="@+id/preview_frame"
-                android:layout_width="72dp"
-                android:layout_height="72dp">
-
-                <View
-                    android:id="@+id/preview_bg"
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
-                    android:layout_gravity="center" />
-
-                <TextView
-                    android:id="@+id/preview_text"
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
-                    android:gravity="center"
-                    android:text="发"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp" />
-            </FrameLayout>
+                android:layout_width="80dp"
+                android:layout_height="80dp" />
         </LinearLayout>
 
         <TextView

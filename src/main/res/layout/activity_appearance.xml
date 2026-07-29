@@ -96,7 +96,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:layout_marginVertical="8dp" />
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -144,6 +145,14 @@
                     android:foreground="?android:attr/selectableItemBackgroundBorderless" />
             </LinearLayout>
 
+            <Button
+                android:id="@+id/presets_light_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/btn_preset_light_button" />
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
@@ -167,7 +176,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal"
-                android:layout_marginVertical="8dp" />
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -215,19 +225,19 @@
                     android:foreground="?android:attr/selectableItemBackgroundBorderless" />
             </LinearLayout>
 
+            <Button
+                android:id="@+id/presets_dark_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="8dp"
+                android:text="@string/btn_preset_dark_button" />
+
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:layout_marginTop="12dp"
                 android:background="@color/qs_divider" />
-
-            <Button
-                android:id="@+id/presets_button"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginVertical="12dp"
-                android:text="@string/btn_preset_button" />
 
         </LinearLayout>
     </ScrollView>

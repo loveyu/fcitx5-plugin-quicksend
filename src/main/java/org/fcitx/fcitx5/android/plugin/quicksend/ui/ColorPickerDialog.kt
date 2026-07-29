@@ -2,7 +2,6 @@ package org.fcitx.fcitx5.android.plugin.quicksend.ui
 
 import android.app.AlertDialog
 import android.content.Context
-import android.content.DialogInterface
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.text.Editable
@@ -11,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.recyclerview.widget.GridLayoutManager
@@ -20,6 +20,9 @@ import org.fcitx.fcitx5.android.plugin.quicksend.R
 class ColorPickerDialog(
     context: Context,
     private val initialColor: Int,
+    private val otherColor: Int? = null,
+    private val isEditingBackground: Boolean = true,
+    private val buttonText: String = "发",
     private val onColorPicked: (Int) -> Unit
 ) : AlertDialog.Builder(context) {
 
@@ -31,8 +34,8 @@ class ColorPickerDialog(
     private var briSeek: SeekBar? = null
     private var alphaSeek: SeekBar? = null
     private var hexInput: EditText? = null
-    private var previewBg: View? = null
-    private var previewText: TextView? = null
+    private var previewFrame: FrameLayout? = null
+    private var previewBtn: TextView? = null
     private var presetsGrid: RecyclerView? = null
 
     private val hsv = FloatArray(3)
@@ -46,9 +49,22 @@ class ColorPickerDialog(
         briSeek = root.findViewById(R.id.bri_seek)
         alphaSeek = root.findViewById(R.id.alpha_seek)
         hexInput = root.findViewById(R.id.hex_input)
-        previewBg = root.findViewById(R.id.preview_bg)
-        previewText = root.findViewById(R.id.preview_text)
+        previewFrame = root.findViewById(R.id.preview_frame)
         presetsGrid = root.findViewById(R.id.presets_grid)
+
+        previewBtn = OverlayButtonRenderer.createPreviewButton(
+            context, initialColor,
+            if (isEditingBackground && otherColor != null) otherColor
+            else contrastTextColor(initialColor),
+            buttonText
+        )
+        previewFrame?.let { frame ->
+            frame.background = OverlayButtonRenderer.createCheckerboardTile()
+            frame.removeAllViews()
+            frame.addView(previewBtn, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = android.view.Gravity.CENTER })
+        }
 
         initSliders()
         updateFromColor(initialColor)
@@ -120,15 +136,28 @@ class ColorPickerDialog(
     }
 
     private fun updatePreview() {
-        val density = previewBg?.resources?.displayMetrics?.density ?: 3f
-        val size = (56 * density).toInt()
-        val bg = GradientDrawable().apply {
+        val bgColor: Int
+        val txtColor: Int
+        if (otherColor != null) {
+            if (isEditingBackground) {
+                bgColor = currentColor
+                txtColor = otherColor
+            } else {
+                bgColor = otherColor
+                txtColor = currentColor
+            }
+        } else {
+            bgColor = currentColor
+            txtColor = contrastTextColor(currentColor)
+        }
+        val density = previewBtn?.resources?.displayMetrics?.density ?: 3f
+        val size = (48 * density).toInt()
+        previewBtn?.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(currentColor)
+            setColor(bgColor)
             setSize(size, size)
         }
-        previewBg?.background = bg
-        previewText?.setTextColor(contrastTextColor(currentColor))
+        previewBtn?.setTextColor(txtColor)
     }
 
     companion object {
@@ -181,8 +210,8 @@ private class PresetAdapter(
     override fun getItemCount() = items.size
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+        val size = (36 * context.resources.displayMetrics.density).toInt()
         val chip = View(context).apply {
-            val size = (36 * context.resources.displayMetrics.density).toInt()
             layoutParams = ViewGroup.LayoutParams(size, size)
         }
         return Holder(chip)
@@ -193,7 +222,7 @@ private class PresetAdapter(
         val drawable = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(item.color)
-            setStroke(1, Color.WHITE and 0x44FFFFFF.toInt())
+            setStroke(2, OverlayButtonRenderer.chipBorderColor(item.color))
         }
         holder.chip.background = drawable
         holder.chip.setOnClickListener { onClick(item) }

@@ -13,6 +13,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import org.fcitx.fcitx5.android.plugin.quicksend.databinding.ActivityAppearanceBinding
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.ColorPickerDialog
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.OverlayButtonRenderer
 
 class AppearanceActivity : Activity() {
 
@@ -39,38 +40,57 @@ class AppearanceActivity : Activity() {
             }
         })
 
-        val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
+        setupColorChip(
+            binding.chipBgLight, QuickSendPrefs.OVERLAY_BG_COLOR, QuickSendPrefs.DEFAULT_BG_COLOR,
+            isEditingBackground = true, otherKey = QuickSendPrefs.OVERLAY_TEXT_COLOR, otherDefault = QuickSendPrefs.DEFAULT_TEXT_COLOR,
+            onUpdate = { refreshPreviewLight() }
+        )
+        setupColorChip(
+            binding.chipBgDark, QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, QuickSendPrefs.DEFAULT_BG_COLOR,
+            isEditingBackground = true, otherKey = QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, otherDefault = QuickSendPrefs.DEFAULT_TEXT_COLOR,
+            onUpdate = { refreshPreviewDark() }
+        )
+        setupColorChip(
+            binding.chipTextLight, QuickSendPrefs.OVERLAY_TEXT_COLOR, QuickSendPrefs.DEFAULT_TEXT_COLOR,
+            isEditingBackground = false, otherKey = QuickSendPrefs.OVERLAY_BG_COLOR, otherDefault = QuickSendPrefs.DEFAULT_BG_COLOR,
+            onUpdate = { refreshPreviewLight() }
+        )
+        setupColorChip(
+            binding.chipTextDark, QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, QuickSendPrefs.DEFAULT_TEXT_COLOR,
+            isEditingBackground = false, otherKey = QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, otherDefault = QuickSendPrefs.DEFAULT_BG_COLOR,
+            onUpdate = { refreshPreviewDark() }
+        )
 
-        setupColorChip(binding.chipBgLight, QuickSendPrefs.OVERLAY_BG_COLOR, QuickSendPrefs.DEFAULT_BG_COLOR) { color ->
-            prefs.edit().putInt(QuickSendPrefs.OVERLAY_BG_COLOR, color).apply()
-            refreshPreviewLight()
-        }
-        setupColorChip(binding.chipBgDark, QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, QuickSendPrefs.DEFAULT_BG_COLOR) { color ->
-            prefs.edit().putInt(QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, color).apply()
-            refreshPreviewDark()
-        }
-        setupColorChip(binding.chipTextLight, QuickSendPrefs.OVERLAY_TEXT_COLOR, QuickSendPrefs.DEFAULT_TEXT_COLOR) { color ->
-            prefs.edit().putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR, color).apply()
-            refreshPreviewLight()
-        }
-        setupColorChip(binding.chipTextDark, QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, QuickSendPrefs.DEFAULT_TEXT_COLOR) { color ->
-            prefs.edit().putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, color).apply()
-            refreshPreviewDark()
-        }
-
-        binding.presetsButton.setOnClickListener { showPresetsDialog() }
+        binding.presetsLightButton.setOnClickListener { showPresetsDialog(isLight = true) }
+        binding.presetsDarkButton.setOnClickListener { showPresetsDialog(isLight = false) }
 
         refreshPreviewLight()
         refreshPreviewDark()
     }
 
-    private fun setupColorChip(container: View, key: String, defaultColor: Int, onPicked: (Int) -> Unit) {
+    private fun setupColorChip(
+        container: View,
+        key: String,
+        defaultColor: Int,
+        isEditingBackground: Boolean,
+        otherKey: String,
+        otherDefault: Int,
+        onUpdate: () -> Unit
+    ) {
         refreshColorChip(container, prefs.getInt(key, defaultColor))
         container.setOnClickListener {
             val cur = prefs.getInt(key, defaultColor)
-            ColorPickerDialog(this, cur) { newColor ->
+            val other = prefs.getInt(otherKey, otherDefault)
+            val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
+            ColorPickerDialog(
+                this, cur,
+                otherColor = other,
+                isEditingBackground = isEditingBackground,
+                buttonText = btnText
+            ) { newColor ->
+                prefs.edit().putInt(key, newColor).apply()
                 refreshColorChip(container, newColor)
-                onPicked(newColor)
+                onUpdate()
             }.show()
         }
     }
@@ -79,7 +99,7 @@ class AppearanceActivity : Activity() {
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(color)
-            setStroke(1, Color.argb(80, 128, 128, 128))
+            setStroke(2, OverlayButtonRenderer.chipBorderColor(color))
         }
     }
 
@@ -103,27 +123,17 @@ class AppearanceActivity : Activity() {
     private fun setPreview(container: ViewGroup, bgColor: Int, textColor: Int) {
         val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
         container.removeAllViews()
-        val density = resources.displayMetrics.density
-        val tv = TextView(this).apply {
-            text = btnText
-            setTextColor(textColor)
-            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
-            gravity = Gravity.CENTER
-            val p = (14 * density).toInt()
-            setPadding(p, p, p, p)
-        }
-        tv.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(bgColor)
-            setSize((48 * density).toInt(), (48 * density).toInt())
-        }
-        container.addView(
-            tv,
-            ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        )
+        val btn = OverlayButtonRenderer.createPreviewButton(this, bgColor, textColor, btnText)
+        val wrapped = OverlayButtonRenderer.wrapWithCheckerboard(this, btn, frameSizeDp = 80)
+        container.addView(wrapped)
     }
 
-    private fun showPresetsDialog() {
+    private fun showPresetsDialog(isLight: Boolean) {
+        val bgKey = if (isLight) QuickSendPrefs.OVERLAY_BG_COLOR else QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT
+        val textKey = if (isLight) QuickSendPrefs.OVERLAY_TEXT_COLOR else QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT
+        val chipBgView = if (isLight) binding.chipBgLight else binding.chipBgDark
+        val chipTextView = if (isLight) binding.chipTextLight else binding.chipTextDark
+
         val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
         val density = resources.displayMetrics.density
 
@@ -170,16 +180,12 @@ class AppearanceActivity : Activity() {
 
             chip.setOnClickListener {
                 prefs.edit()
-                    .putInt(QuickSendPrefs.OVERLAY_BG_COLOR, bgColor)
-                    .putInt(QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, bgColor)
-                    .putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR, textColor)
-                    .putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, textColor)
+                    .putInt(bgKey, bgColor)
+                    .putInt(textKey, textColor)
                     .apply()
-                refreshAllPreviews()
-                refreshColorChip(binding.chipBgLight, bgColor)
-                refreshColorChip(binding.chipBgDark, bgColor)
-                refreshColorChip(binding.chipTextLight, textColor)
-                refreshColorChip(binding.chipTextDark, textColor)
+                if (isLight) refreshPreviewLight() else refreshPreviewDark()
+                refreshColorChip(chipBgView, bgColor)
+                refreshColorChip(chipTextView, textColor)
             }
 
             gridContainer.addView(chip)
