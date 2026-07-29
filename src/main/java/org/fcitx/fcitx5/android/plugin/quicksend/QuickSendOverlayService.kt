@@ -443,6 +443,17 @@ class QuickSendOverlayService : android.app.Service() {
             contentDescription = getString(R.string.overlay_close)
             setOnClickListener { hideList() }
         }
+        val dragModeBtn = TextView(this).apply {
+            text = getString(R.string.overlay_drag_mode)
+            setTextColor(resolveColor(R.color.qs_accent))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            contentDescription = getString(R.string.overlay_drag_mode)
+            setOnClickListener {
+                hideList()
+                mainHandler.post { buttonView?.let { dragEnterRunnable.run() } }
+            }
+        }
         val settingsBtn = ImageButton(this).apply {
             setImageResource(R.drawable.ic_settings)
             setBackgroundColor(Color.TRANSPARENT)
@@ -466,6 +477,7 @@ class QuickSendOverlayService : android.app.Service() {
                 title,
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT).apply { weight = 1f }
             )
+            addView(dragModeBtn)
             addView(settingsBtn)
             addView(closeBtn)
         }
