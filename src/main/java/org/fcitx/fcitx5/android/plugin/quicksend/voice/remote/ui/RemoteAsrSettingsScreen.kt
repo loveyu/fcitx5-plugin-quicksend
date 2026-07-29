@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.ui
 import android.content.Context
 import android.content.SharedPreferences
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -191,23 +192,8 @@ private fun BackendList(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp)
                     .height(ROW_HEIGHT)
+                    .clickable { onClick(backend) }
                     .graphicsLayer { translationY = ty }
-                    .pointerInput(backends.size) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { dragFrom = index; dragOffset = 0f },
-                            onDrag = { _, delta -> dragOffset += delta.y },
-                            onDragEnd = {
-                                val f = dragFrom
-                                if (f != null) {
-                                    val t = (f + (dragOffset / rowHeightPx).roundToInt())
-                                        .coerceIn(0, backends.lastIndex)
-                                    if (t != f) onReorder(f, t)
-                                }
-                                dragFrom = null; dragOffset = 0f
-                            },
-                            onDragCancel = { dragFrom = null; dragOffset = 0f }
-                        )
-                    }
             ) {
                 Row(
                     modifier = Modifier
@@ -215,7 +201,28 @@ private fun BackendList(
                         .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("≡", style = MaterialTheme.typography.titleLarge)
+                    Box(
+                        Modifier
+                            .pointerInput(backends.size) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { dragFrom = index; dragOffset = 0f },
+                                    onDrag = { _, delta -> dragOffset += delta.y },
+                                    onDragEnd = {
+                                        val f = dragFrom
+                                        if (f != null) {
+                                            val t = (f + (dragOffset / rowHeightPx).roundToInt())
+                                                .coerceIn(0, backends.lastIndex)
+                                            if (t != f) onReorder(f, t)
+                                        }
+                                        dragFrom = null; dragOffset = 0f
+                                    },
+                                    onDragCancel = { dragFrom = null; dragOffset = 0f }
+                                )
+                            }
+                            .padding(horizontal = 6.dp, vertical = 8.dp)
+                    ) {
+                        Text("≡", style = MaterialTheme.typography.titleLarge)
+                    }
                     Column(
                         Modifier
                             .weight(1f)
