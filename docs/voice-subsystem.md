@@ -114,8 +114,20 @@ host 语音按钮
 - "重置默认"按钮同步清除识别参数 prefs。
 - 参数变更后需要重新触发模型加载（`SherpaModelHolder` 按 `config.toSignature()` 检测差异并自动重载）。
 
+## 远端 ASR（多后端，链式回退）
+
+远端不再是单后端 + 三键 prefs，而是**可插拔多后端**体系：
+
+- **配置模型** `RemoteBackend`（sealed，`voice/remote/RemoteBackend.kt`）：`StreamingAsrServerBackend`（自建 streaming-asr-server）/ `TencentAsrV2Backend`（腾讯实时语音识别 V2）。公共字段 `id/name/enable/tested`；新增类型再加一个 data class + 识别器即可（kotlinx-serialization 自动带 `type` 判别）。
+- **持久化** `RemoteBackendStore`（`voice/remote/RemoteBackendStore.kt`）：JSON 数组存 `QuickSendPrefs.VOICE_REMOTE_BACKENDS`。`activeBackends()` = `enable && tested`，按存储顺序（= 优先级）。
+- **识别器**：`BaseWsStreamingRecognizer`（`voice/remote/`）抽公共骨架（16k PCM 直采 + 单 nativeThread + 收尾/软结束/错误分类模板方法）；`StreamingAsrServerRecognizer` / `TencentAsrV2Recognizer`（`voice/remote/{streaming,tencent}/`）实现协议差异。`RemoteBackend.recognizer()` 工厂映射配置→识别器。
+- **链式回退**（在 `VoiceOverlayService`）：会话开始取 `activeBackends()` 为优先级链；当前后端失败且链未耗尽 → 试下一个；链耗尽后 `ErrorKind.Generic` → 回退本地（`[NL]`），`RemoteAuth/RemoteOverload` → 仅提示不静默回退（与原单后端语义一致）。无后端 → 直接本地。
+- **腾讯 V2 客户端直连**：签名（HMAC-SHA1+Base64）在客户端算，拼进 `wss://asr.cloud.tencent.com/asr/v2/<appid>?<字典序参数>&signature=<urlencode>`。签名逻辑抽到纯 JVM 的 `TencentV2Signing`（自带 base64，便于单测，避开 minSdk 24 与 java.util.Base64 需 API 26 的冲突）。`sentence_type==1`→Final、否则 Partial；code 4002/4003/4004/4005→鉴权、4006→满载、4008→软结束。
+- **设置页**：`RemoteAsrSettingsActivity`（Compose + Material3，列表「启用在前 + 长按拖拽排序」+ 底部抽屉编辑按类型填参 + 单后端测试）。入口在主菜单「远端语音识别」（不再埋在本地语音输入页）。
+- **单后端测试**：设置页点「测试」→ 先 upsert（稳定 id）→ 序列化后端 → `startForegroundService(VoiceOverlayService, ACTION_START, EXTRA_TEST_MODE=true, EXTRA_TEST_BACKEND_JSON)`。测试模式跳过模型就绪/启用判断、不响应输入窗隐藏、`VoiceController.onFinalResult` 旁路 host 注入；final 含「测试」→ `RemoteBackendStore.setTested(id, true)` + Toast。
+
 ## 扩展点（占位，待实现）
 
-- `RecognizerProvider`：Phase 1 仅本地 Sherpa；在线 Provider（OpenAI / Deepgram / Google / Azure / 阿里云 / 腾讯云 / 自定义 WebSocket）留空。
+- `RecognizerProvider`：仍为占位接口（远端已由 `RemoteBackend` + 工厂实现，未走此接口）；后续若有更复杂的在线 Provider 抽象再启用。
 - `TextRefiner`：Phase 1 仅 `NoOpRefiner`；大模型润色（自动标点 / 去口头禅 / 数字转换 / 中英空格等）留空。
-- `SpeechRecognizer`：识别器抽象接口（`events: Flow<RecognitionEvent>` + `start/stop/cancel`），`SherpaRecognizer` 是其实现。
+- `SpeechRecognizer`：识别器抽象接口（`events: Flow<RecognitionEvent>` + `start/stop/cancel`），`SherpaRecognizer` 与 `BaseWsStreamingRecognizer` 子类是其实现。

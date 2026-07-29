@@ -9,7 +9,7 @@
 fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL IPC 与 fcitx5-android **主程序（host）**通信。两个功能：
 
 - **QuickSend**：发送预设按键组合 / 文本（如 `Ctrl+Shift+Del`），条目存 Room。
-- **语音输入**：Sherpa-ONNX 本地流式中文识别 + 可选远端 WebSocket ASR，浮层驱动。
+- **语音输入**：Sherpa-ONNX 本地流式中文识别 + 可选远端多后端 ASR（streaming-asr-server / 腾讯实时 V2），浮层驱动。
 
 **最高频认知**：发送按键 / 文本 / 语音注入**都不在本进程完成**，而是经 IPC 调用 host 的 `IQuickSendService`。host 不实现对应方法 → 远程调用失败。改 IPC 接口**两边都要改**（host fork 在姐妹目录，IPC 代码在其 `release` 分支）。
 
@@ -51,9 +51,9 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 - ⚠️ **native 线程铁律（防 SIGSEGV）**：`SherpaRecognizer` 的所有原生对象（stream/AudioRecord）只在唯一的 `nativeThread` 上创建/使用/释放；`stop/cancel/releaseNow` 仅翻转 `@Volatile` 标志并 `join` 该线程，**绝不跨线程直接接触原生对象**。违反会在 `acceptWaveform` 处 native SIGSEGV（历史教训见 [tech-debt.md](tech-debt.md)）。
 - ⚠️ **切换模式的初始化真空期**：浮层顶部「强制本地」开关切换本地/网络时，`teardownCurrentController()` 后到新 controller 接管前，UI 不再被 state 驱动。**必须在 teardown 后立即 `updateUi(VoiceUiState.Initializing)`**，否则状态冻结在切换前的 `[N]正在聆听`（实际网络已断、本地在加载）。见 [tech-debt.md](tech-debt.md)。
 - **模型首次加载数秒**（`SherpaModelHolder.getOrLoad`，进程级单例常驻内存）；初始启动经 `VoiceController.start()` 内部加载，`Initializing` 状态天然覆盖加载期。
-- **远端失败回退策略**：远端鉴权失败（`RemoteAuth`）/ 满载 503（`RemoteOverload`）**不静默回退本地**，明确提示 + Toast；仅 `Generic`（网络不通等）自动回退本地（`[NL]`，红色 N）。用户可随时点顶部「强制本地」手动切本地。
+- **远端失败回退策略**：远端为**多后端优先级链**（`enable && tested`，按存储顺序）。链未耗尽时当前后端失败即试下一个；链耗尽后远端鉴权失败（`RemoteAuth`，含腾讯 4002/4003/4004/4005）/ 满载（`RemoteOverload`，腾讯 4006）**不静默回退本地**，明确提示 + Toast；仅 `Generic`（网络不通等）自动回退本地（`[NL]`，红色 N）。用户可随时点顶部「强制本地」手动切本地。
 - **模型下载被墙**：设置页改模型 base URL（切镜像）或配代理 URI（prefs `voice_proxy_uri`，如 `http://127.0.0.1:7890`、`socks5://host:1080`）。识别本身本地、不走网络。
-- **远端/本地双模式**：prefs `voice_remote_enabled` 开启远端；会话内可用顶部「强制本地」开关临时切本地。
+- **远端多后端配置**：主菜单「远端语音识别」→ Compose 设置页（`RemoteAsrSettingsActivity`），支持 streaming-asr-server / tencent-asr-v2 两类，列表「启用在前 + 长按拖拽排序」，底部抽屉编辑 + 单后端测试（说「测试」回写 `tested`）。配置存 `voice_remote_backends`（JSON 数组），旧的 `voice_remote_*` 三键已丢弃不迁移。
 
 → 语音管线、状态机、模型管理、识别参数完整细节见 [voice-subsystem.md](voice-subsystem.md)。
 
@@ -70,12 +70,12 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 ## 5. 日志与调试
 
 - `VoiceLog` / `AppLog` 落**应用专用外部目录**文件（`VoiceLog` 2MB 自动轮转），语音设置页右上角 → 调试日志设置页可清空 / 分享（经 `FileProvider`）、开 `LOG_DEBUG_ENABLED`（同时落盘 + logcat，默认关，仅 WARN+）。
-- **logcat tag 速查**（非穷尽）：`QuickSendMainService`（绑定）/ `QuickSendExecutor`（发送）/ `VoiceCtrl`（语音编排）/ `SherpaRec`（本地识别）/ `ModelHolder`（模型加载）/ `RemoteASR`（远端识别）/ `VoiceOverlay`（语音浮层）/ `VoiceModel`（模型下载）。
+- **logcat tag 速查**（非穷尽）：`QuickSendMainService`（绑定）/ `QuickSendExecutor`（发送）/ `VoiceCtrl`（语音编排）/ `SherpaRec`（本地识别）/ `ModelHolder`（模型加载）/ `RemoteASR`（streaming-asr-server 识别）/ `TencentASR`（腾讯 V2 识别）/ `VoiceOverlay`（语音浮层）/ `VoiceModel`（模型下载）。
 - 联调「发送没反应」：先 logcat 过 `QuickSendExecutor`/`QuickSendMainService` 看 `Remote service not connected` / `Send failed`，再排查 host 实现 / 签名 / 三路绑定。
 
 ## 6. 协作规范（AI 写代码 / 文档时遵守）
 
 - **代码风格**：注释用**中文**；协程 + `StateFlow` 驱动 UI；跨进程序列化用 `kotlinx.serialization`；IPC 调用切 `Dispatchers.IO`（host 端可能派发到 IMS 主线程阻塞）。
-- **技术栈约束**：Kotlin `2.2.x` / AGP `9.x` / Gradle `9.x` / KSP / Room；**JDK 17+** 运行 Gradle，字节码 Java 11。无 instrumentation 测试。
+- **技术栈约束**：Kotlin `2.2.x` / AGP `9.x` / Gradle `9.x` / KSP / Room；**JDK 17+** 运行 Gradle，字节码 Java 11。UI 以 XML + ViewBinding 为主；**仅远端 ASR 设置页用 Jetpack Compose + Material3**（`org.jetbrains.kotlin.plugin.compose` 插件 + Compose BOM），其余页面/弹窗/两个悬浮模块未迁移。无 instrumentation 测试。
 - **文档单一权威**：每个技术主题一处权威，其它文档**交叉引用**而非复制；改「清单型」内容必须同步对应 docs——新增/修复坑 → [tech-debt.md](tech-debt.md)；IPC/组件变更 → [architecture.md](architecture.md)；语音变更 → [voice-subsystem.md](voice-subsystem.md)；构建/签名/CI 变更 → [build-and-release.md](build-and-release.md)。
 - **改动前先确认**：任何改文件/系统的操作先说明意图，获同意再动手（见 [CLAUDE.md](../CLAUDE.md)）。

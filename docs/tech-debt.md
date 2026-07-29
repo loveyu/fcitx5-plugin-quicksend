@@ -55,9 +55,12 @@
 - **无 universal APK**：ABI 拆分控单包体积（Sherpa native 库随 ABI 拆开）。
 - **模型进程级单例**：`SherpaModelHolder` 持 `OnlineRecognizer` 常驻内存，插件不销毁不释放；`RecognitionConfig` 变更按 `toSignature()` 自动重载。代价是占用内存（数十 MB）；收益是避免每次语音会话重载（~1-5s）。
 - **远端失败默认不静默回退**（鉴权/满载）：用「明确提示」换「用户感知」，避免误以为本地正常。
+- **Compose 仅限远端设置页**：引入 `androidx.compose.material3` 只为新建的多后端设置页（列表 + 抽屉 + 拖拽）。`PluginActivity`/`VoiceSettingsActivity`/`AppearanceActivity`/`LogSettingsActivity`/`EditEntryDialog` 与两个悬浮模块仍用 XML/编程式 View，未迁移。代价是两套 UI 栈并存；收益是远端页复杂交互快速落地、零回归风险。
+- **拖拽排序原生实现**：远端列表用 `detectDragGesturesAfterLongPress` + 固定行高 + `graphicsLayer` 位移自实现，不引入第三方 reorderable 库。代价是无自动滚动（后端数量少，可接受）；收益是零新增依赖、镜像源不受影响。
+- **腾讯签名自带 Base64**：`TencentV2Signing` 自带 RFC4648 base64 而非用 `android.util.Base64`（minSdk 24）/`java.util.Base64`（API 26）。代价是多 ~20 行代码；收益是纯 JVM 可单测、避开两个 Base64 的 API 版本两难。
 
 ## 已知待办 / 待观察
 
-- **[voice-subsystem.md](voice-subsystem.md) §扩展点 描述略过时**：该段称「Phase 1 仅本地 Sherpa，在线 Provider 留空」，但 `RemoteSpeechRecognizer`（远端 WebSocket ASR）**已完整实现**并可用（prefs `voice_remote_enabled`）。待同步该段表述。`RecognizerProvider`（多供应商在线 ASR）/ `TextRefiner`（大模型润色）仍是占位接口。
-- **无测试源码**：`src/test` / `src/androidTest` 为空壳，仅声明了 junit 依赖。`SendActionBuilder`（纯算法）、`ProxyConfig.fromUri`、`KeyNameMapping` 等适合补单测。
+- **远端 ASR 已多后端化**（本次重构）：原单后端 `RemoteSpeechRecognizer` + 三键 prefs（`voice_remote_enabled/url/token`，**已丢弃不迁移**）改为 `RemoteBackend`（sealed：streaming-asr-server / tencent-asr-v2）+ `RemoteBackendStore`（JSON 数组）+ 链式回退。`voice-subsystem.md` §远端 ASR / §扩展点 已同步。[voice-subsystem.md](voice-subsystem.md) §扩展点 的「过时」待办随之关闭。
+- **无测试源码**：`src/test` / `src/androidTest` 为空壳（仅声明 junit）。已补 `TencentV2SigningTest`（腾讯签名串格式 + HMAC-SHA1/Base64 与 JDK 对拍）。`SendActionBuilder`（纯算法）、`ProxyConfig.fromUri`、`KeyNameMapping` 等仍适合补单测。
 - **README/文档历史引用**：设计期文档（`docs/fcitx5-plugin-quicksend/*`）已删除，引用已于本次清理。
