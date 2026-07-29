@@ -29,6 +29,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -74,6 +75,7 @@ class VoiceOverlayService : Service() {
     private var windowManager: android.view.WindowManager? = null
     private var overlayView: View? = null
     private var partialText: TextView? = null
+    private var partialScroll: MaxHeightScrollView? = null
     private var statusText: TextView? = null
     private var buttonRow: LinearLayout? = null
     private var promptView: TextView? = null
@@ -414,6 +416,7 @@ class VoiceOverlayService : Service() {
             }
             is VoiceUiState.Partial -> {
                 pt.text = state.text
+                scrollPartialToBottom()
                 st.text = buildStatusText(getString(R.string.voice_listening))
                 pauseBtn?.text = getString(R.string.voice_pause)
                 backspaceBtn?.visibility = View.VISIBLE
@@ -421,6 +424,7 @@ class VoiceOverlayService : Service() {
             }
             is VoiceUiState.Paused -> {
                 pt.text = state.text
+                scrollPartialToBottom()
                 st.text = buildStatusText(getString(R.string.voice_paused))
                 pauseBtn?.text = getString(R.string.voice_resume)
                 backspaceBtn?.visibility = View.VISIBLE
@@ -538,6 +542,13 @@ class VoiceOverlayService : Service() {
             setMinHeight(dp(40))
             setPadding(dp(14), dp(10), dp(14), dp(4))
         }
+        // 实时文本区封顶 + 可滚动：超长识别文本（如多句累积）不会把浮层顶出屏幕，
+        // 超过最大高度后内部滚动，且新文本追加时自动滚到底部（见 scrollPartialToBottom）。
+        val partialScrollV = MaxHeightScrollView(this).apply {
+            maxHeightPx = maxPartialHeightPx()
+            addView(pt)
+        }
+        partialScroll = partialScrollV
         val st = TextView(this).apply {
             text = getString(R.string.voice_listening)
             setTextColor(resolveColor(R.color.qs_text_secondary))
@@ -595,7 +606,7 @@ class VoiceOverlayService : Service() {
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
             )
             addView(prompt)
-            addView(pt)
+            addView(partialScrollV)
             addView(st)
             addView(row)
         }
@@ -690,6 +701,7 @@ class VoiceOverlayService : Service() {
         overlayView?.let { runCatching { windowManager?.removeView(it) } }
         overlayView = null
         partialText = null
+        partialScroll = null
         statusText = null
         buttonRow = null
         promptView = null
@@ -741,8 +753,29 @@ class VoiceOverlayService : Service() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun resolveColor(id: Int): Int = ContextCompat.getColor(this, id)
 
+    /** 实时文本区最大高度：屏幕高的 35%，夹在 [120dp, 320dp]，防止超长文本把浮层顶出屏幕。 */
+    private fun maxPartialHeightPx(): Int =
+        (resources.displayMetrics.heightPixels * 0.35f).toInt().coerceIn(dp(120), dp(320))
+
+    /** 文本持续追加时让实时文本区滚到底部，展示最新识别内容。 */
+    private fun scrollPartialToBottom() {
+        partialScroll?.post { partialScroll?.fullScroll(View.FOCUS_DOWN) }
+    }
+
     private fun runOnUiThread(action: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) action() else mainHandler.post(action)
+    }
+
+    /**
+     * 限制最大高度的 [ScrollView]：`onMeasure` 把高度封到 [maxHeightPx]（AT_MOST）。
+     * 子 View 不足时按内容收缩、超过时封顶并启用内部滚动。普通 ScrollView 配 wrap_content
+     * 会随子 View 无限增高不滚动，故需此子类主动封顶。
+     */
+    private class MaxHeightScrollView(context: Context) : ScrollView(context) {
+        var maxHeightPx: Int = Int.MAX_VALUE
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            super.onMeasure(widthSpec, View.MeasureSpec.makeMeasureSpec(maxHeightPx, View.MeasureSpec.AT_MOST))
+        }
     }
 
     companion object {
