@@ -112,6 +112,9 @@
     <string name="voice_remote_enabled">启用远端服务器</string>
     <string name="voice_remote_url">服务器地址（如 ws://192.168.1.100:6008）</string>
     <string name="voice_remote_token">鉴权 Token</string>
+    <string name="voice_remote_settings">远端服务器设置</string>
+    <string name="voice_remote_settings_title">远端语音识别</string>
+    <string name="voice_remote_description">后续将接入更多语音识别服务，此处为通用 WebSocket 协议设置。</string>
 
     <!-- 调试日志 -->
     <string name="voice_log_section">调试日志</string>

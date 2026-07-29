@@ -12,6 +12,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.Color
@@ -22,6 +23,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -65,6 +68,12 @@ class VoiceOverlayService : Service() {
     private var remoteService: IQuickSendService? = null
     private var bound = false
     private var registered = false
+
+    private var voiceMode = VoiceMode.LOCAL
+    private var isFallingBack = false
+    private var currentPrefs: SharedPreferences? = null
+
+    private enum class VoiceMode { LOCAL, REMOTE, REMOTE_FALLBACK_LOCAL }
 
     private val inputWindowListener = object : IInputWindowStateListener.Stub() {
         override fun onInputWindowShown() {}
@@ -146,11 +155,12 @@ class VoiceOverlayService : Service() {
     }
 
     private fun startVoice(prefs: android.content.SharedPreferences) {
+        currentPrefs = prefs
+        isFallingBack = false
         promptView?.visibility = View.GONE
         buttonRow?.visibility = View.VISIBLE
 
         val remoteEnabled = prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)
-        val recognizerFactory: suspend () -> SpeechRecognizer
         if (remoteEnabled) {
             val url = prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: ""
             val token = prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, null)
@@ -159,29 +169,35 @@ class VoiceOverlayService : Service() {
                 showPrompt("请先配置远端服务器地址")
                 return
             }
+            voiceMode = VoiceMode.REMOTE
             VoiceLog.i(TAG, "using remote ASR: $url")
-            recognizerFactory = { RemoteSpeechRecognizer(url, token) }
+            createAndStartController { RemoteSpeechRecognizer(url, token) }
         } else {
-            val dir = File(getExternalFilesDir(null) ?: filesDir, VoiceModelManager.MODEL_DIR_NAME)
-            val recConfig = RecognitionConfig(
-                decodingMethod = prefs.getString(QuickSendPrefs.VOICE_DECODING_METHOD, RecognitionConfig.DEFAULT_DECODING_METHOD) ?: RecognitionConfig.DEFAULT_DECODING_METHOD,
-                maxActivePaths = prefs.getInt(QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS, RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS),
-                blankPenalty = prefs.getFloat(QuickSendPrefs.VOICE_BLANK_PENALTY, RecognitionConfig.DEFAULT_BLANK_PENALTY),
-                endpointSilence = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_SILENCE, RecognitionConfig.DEFAULT_ENDPOINT_SILENCE),
-                endpointMaxUtterance = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER, RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE),
-                numThreads = prefs.getInt(QuickSendPrefs.VOICE_NUM_THREADS, RecognitionConfig.DEFAULT_NUM_THREADS),
-                provider = prefs.getString(QuickSendPrefs.VOICE_PROVIDER, RecognitionConfig.DEFAULT_PROVIDER) ?: RecognitionConfig.DEFAULT_PROVIDER
-            )
-            val names = SherpaModelNames()
+            voiceMode = VoiceMode.LOCAL
             VoiceLog.i(TAG, "using local Sherpa model")
-            recognizerFactory = {
-                val rec = SherpaModelHolder.getOrLoad(dir, names, recConfig)
-                SherpaRecognizer(rec)
-            }
+            createAndStartController { makeLocalRecognizer(prefs) }
         }
+    }
 
+    private suspend fun makeLocalRecognizer(prefs: SharedPreferences): SpeechRecognizer {
+        val dir = File(getExternalFilesDir(null) ?: filesDir, VoiceModelManager.MODEL_DIR_NAME)
+        val recConfig = RecognitionConfig(
+            decodingMethod = prefs.getString(QuickSendPrefs.VOICE_DECODING_METHOD, RecognitionConfig.DEFAULT_DECODING_METHOD) ?: RecognitionConfig.DEFAULT_DECODING_METHOD,
+            maxActivePaths = prefs.getInt(QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS, RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS),
+            blankPenalty = prefs.getFloat(QuickSendPrefs.VOICE_BLANK_PENALTY, RecognitionConfig.DEFAULT_BLANK_PENALTY),
+            endpointSilence = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_SILENCE, RecognitionConfig.DEFAULT_ENDPOINT_SILENCE),
+            endpointMaxUtterance = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER, RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE),
+            numThreads = prefs.getInt(QuickSendPrefs.VOICE_NUM_THREADS, RecognitionConfig.DEFAULT_NUM_THREADS),
+            provider = prefs.getString(QuickSendPrefs.VOICE_PROVIDER, RecognitionConfig.DEFAULT_PROVIDER) ?: RecognitionConfig.DEFAULT_PROVIDER
+        )
+        val names = SherpaModelNames()
+        val rec = SherpaModelHolder.getOrLoad(dir, names, recConfig)
+        return SherpaRecognizer(rec)
+    }
+
+    private fun createAndStartController(factory: suspend () -> SpeechRecognizer) {
         val ctrl = VoiceController(
-            recognizerFactory = recognizerFactory,
+            recognizerFactory = factory,
             remote = { remoteService },
             onSessionEnd = { mainHandler.post { stopSelf() } }
         )
@@ -199,34 +215,78 @@ class VoiceOverlayService : Service() {
             VoiceUiState.Idle -> { /* 会话结束，服务将 stopSelf */ }
             VoiceUiState.Initializing -> {
                 pt.text = ""
-                st.text = getString(R.string.voice_initializing)
+                st.text = buildStatusText(getString(R.string.voice_initializing))
                 pauseBtn?.text = getString(R.string.voice_pause)
                 backspaceBtn?.visibility = View.VISIBLE
                 finishBtn?.visibility = View.VISIBLE
             }
             VoiceUiState.Listening -> {
-                st.text = getString(R.string.voice_listening)
+                st.text = buildStatusText(getString(R.string.voice_listening))
                 pauseBtn?.text = getString(R.string.voice_pause)
                 backspaceBtn?.visibility = View.VISIBLE
                 finishBtn?.visibility = View.VISIBLE
             }
             is VoiceUiState.Partial -> {
                 pt.text = state.text
-                st.text = getString(R.string.voice_listening)
+                st.text = buildStatusText(getString(R.string.voice_listening))
                 pauseBtn?.text = getString(R.string.voice_pause)
                 backspaceBtn?.visibility = View.VISIBLE
                 finishBtn?.visibility = View.VISIBLE
             }
             is VoiceUiState.Paused -> {
                 pt.text = state.text
-                st.text = getString(R.string.voice_paused)
+                st.text = buildStatusText(getString(R.string.voice_paused))
                 pauseBtn?.text = getString(R.string.voice_resume)
                 backspaceBtn?.visibility = View.VISIBLE
                 finishBtn?.visibility = View.VISIBLE
             }
-            VoiceUiState.Finishing -> st.text = getString(R.string.voice_committing)
-            is VoiceUiState.Error -> st.text = state.message
+            VoiceUiState.Finishing -> st.text = buildStatusText(getString(R.string.voice_committing))
+            is VoiceUiState.Error -> {
+                if (voiceMode == VoiceMode.REMOTE && !isFallingBack && VoiceModelManager.isReady(this)) {
+                    VoiceLog.i(TAG, "remote failed, falling back to local model")
+                    isFallingBack = true
+                    voiceMode = VoiceMode.REMOTE_FALLBACK_LOCAL
+                    controller?.destroy()
+                    controller = null
+                    currentPrefs?.let { p ->
+                        scope.launch(Dispatchers.IO) {
+                            val rec = makeLocalRecognizer(p)
+                            runOnUiThread { createAndStartController { rec } }
+                        }
+                    }
+                    return
+                }
+                st.text = state.message
+            }
             VoiceUiState.NotReady -> showPrompt(getString(R.string.voice_model_not_ready))
+        }
+    }
+
+    private fun buildStatusText(text: String): CharSequence {
+        return when (voiceMode) {
+            VoiceMode.LOCAL -> SpannableStringBuilder().apply {
+                append("[L] ")
+                append(text)
+                setSpan(ForegroundColorSpan(Color.GREEN), 0, length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            VoiceMode.REMOTE -> SpannableStringBuilder().apply {
+                append("[N] ")
+                append(text)
+                setSpan(ForegroundColorSpan(Color.GREEN), 0, length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            VoiceMode.REMOTE_FALLBACK_LOCAL -> {
+                val green = Color.GREEN
+                val red = Color.RED
+                SpannableStringBuilder().apply {
+                    val bracketStart = append("[")
+                    setSpan(ForegroundColorSpan(green), 0, 1, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    val nIdx = append("N")
+                    setSpan(ForegroundColorSpan(red), 1, 2, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    append("L] ")
+                    append(text)
+                    setSpan(ForegroundColorSpan(green), 2, length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+            }
         }
     }
 

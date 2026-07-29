@@ -62,10 +62,9 @@ class VoiceSettingsActivity : Activity() {
         }
         binding.resetButton.setOnClickListener { resetToDefaults() }
 
-        binding.remoteEnabledCheck.setOnCheckedChangeListener { _, checked ->
-            val vis = if (checked) android.view.View.VISIBLE else android.view.View.GONE
-            binding.remoteUrl.visibility = vis
-            binding.remoteToken.visibility = vis
+        binding.remoteSettingsButton.setOnClickListener {
+            persistPrefs()
+            startActivity(Intent(this, RemoteVoiceSettingsActivity::class.java))
         }
 
         binding.logPath.text = VoiceLog.path(this)
@@ -84,6 +83,11 @@ class VoiceSettingsActivity : Activity() {
     override fun onResume() {
         super.onResume()
         VoiceModelManager.refresh(this, names())
+    }
+
+    override fun onPause() {
+        super.onPause()
+        persistPrefs()
     }
 
     override fun onDestroy() {
@@ -108,13 +112,6 @@ class VoiceSettingsActivity : Activity() {
         binding.namesTokens.setText(
             prefs.getString(QuickSendPrefs.VOICE_NAME_TOKENS, SherpaModelNames.DEFAULT_TOKENS)
         )
-        val remoteEnabled = prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)
-        binding.remoteEnabledCheck.isChecked = remoteEnabled
-        binding.remoteUrl.setText(prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: "")
-        binding.remoteToken.setText(prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, "") ?: "")
-        val vis = if (remoteEnabled) android.view.View.VISIBLE else android.view.View.GONE
-        binding.remoteUrl.visibility = vis
-        binding.remoteToken.visibility = vis
         loadParamPrefs()
     }
 
@@ -162,9 +159,6 @@ class VoiceSettingsActivity : Activity() {
             .putString(QuickSendPrefs.VOICE_NAME_DECODER, n.decoder)
             .putString(QuickSendPrefs.VOICE_NAME_JOINER, n.joiner)
             .putString(QuickSendPrefs.VOICE_NAME_TOKENS, n.tokens)
-            .putBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, binding.remoteEnabledCheck.isChecked)
-            .putString(QuickSendPrefs.VOICE_REMOTE_URL, binding.remoteUrl.text.toString().trim())
-            .putString(QuickSendPrefs.VOICE_REMOTE_TOKEN, binding.remoteToken.text.toString().trim())
         saveParamPrefs(editor)
         editor.apply()
     }
@@ -285,20 +279,12 @@ class VoiceSettingsActivity : Activity() {
             .remove(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER)
             .remove(QuickSendPrefs.VOICE_NUM_THREADS)
             .remove(QuickSendPrefs.VOICE_PROVIDER)
-            .remove(QuickSendPrefs.VOICE_REMOTE_ENABLED)
-            .remove(QuickSendPrefs.VOICE_REMOTE_URL)
-            .remove(QuickSendPrefs.VOICE_REMOTE_TOKEN)
             editor.apply()
         binding.modelUrl.setText(VoiceModelManager.DEFAULT_BASE_URL)
         binding.namesEncoder.setText(SherpaModelNames.DEFAULT_ENCODER)
         binding.namesDecoder.setText(SherpaModelNames.DEFAULT_DECODER)
         binding.namesJoiner.setText(SherpaModelNames.DEFAULT_JOINER)
         binding.namesTokens.setText(SherpaModelNames.DEFAULT_TOKENS)
-        binding.remoteEnabledCheck.isChecked = false
-        binding.remoteUrl.setText("")
-        binding.remoteToken.setText("")
-        binding.remoteUrl.visibility = android.view.View.GONE
-        binding.remoteToken.visibility = android.view.View.GONE
         loadParamPrefs()
         Toast.makeText(this, "已恢复默认配置", Toast.LENGTH_SHORT).show()
     }

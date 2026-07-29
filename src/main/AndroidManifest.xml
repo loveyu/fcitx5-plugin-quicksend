@@ -64,6 +64,12 @@
             android:exported="false"
             android:theme="@style/Theme.QuickSend" />
 
+        <!-- 远端语音识别设置页 -->
+        <activity
+            android:name="org.fcitx.fcitx5.android.plugin.quicksend.voice.RemoteVoiceSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.QuickSend" />
+
         <!-- 悬浮按钮外观设置页 -->
         <activity
             android:name="org.fcitx.fcitx5.android.plugin.quicksend.AppearanceActivity"
