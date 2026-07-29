@@ -4,6 +4,9 @@
         android:id="@+id/action_appearance"
         android:title="@string/btn_appearance" />
     <item
+        android:id="@+id/action_remote_voice"
+        android:title="@string/remote_voice_entry" />
+    <item
         android:id="@+id/action_voice_settings"
         android:title="@string/voice_settings_entry" />
     <item

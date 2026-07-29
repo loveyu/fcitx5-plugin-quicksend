@@ -31,25 +31,31 @@ import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceLog
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-class RemoteSpeechRecognizer(
-    private val serverUrl: String,
-    private val authToken: String?
-) : SpeechRecognizer {
+/**
+ * 「WebSocket + 16k PCM16 直采 + 单 native 线程」流式识别器基类。把跨后端公共的录音/线程/收尾/
+ * 错误分类骨架抽到这里，子类只实现协议差异（握手 URL/签名、start/finish 文本帧、消息解析、错误分类）。
+ *
+ * 复用自原 RemoteSpeechRecognizer 的全部生命周期不变式：
+ * - 所有 stream/AudioRecord 原生对象只在唯一 nativeThread 上创建/使用/释放；
+ * - stop/cancel/releaseNow 仅翻 @Volatile 标志并 join nativeThread，绝不跨线程接触原生对象；
+ * - 「完成」按钮的 stop() 内 join 切到 IO（[awaitNativeThread]），避免阻塞主线程。
+ */
+abstract class BaseWsStreamingRecognizer : SpeechRecognizer {
 
-    private val sampleRate = 16000
-    private val eventChannel = Channel<RecognitionEvent>(Channel.BUFFERED)
-    private val client: OkHttpClient = OkHttpClient.Builder()
+    protected val sampleRate = 16000
+    protected val eventChannel = Channel<RecognitionEvent>(Channel.BUFFERED)
+    protected val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    @Volatile private var running = false
-    @Volatile private var paused = false
-    @Volatile private var started = false
-    @Volatile private var nativeThread: Thread? = null
+    @Volatile protected var running = false
+    @Volatile protected var paused = false
+    @Volatile protected var started = false
+    @Volatile protected var nativeThread: Thread? = null
     /** 最近一次 partial 文本：服务端业务级超时（idle）时用作软结束的 final 内容。 */
-    @Volatile private var lastPartialText: String = ""
+    @Volatile protected var lastPartialText: String = ""
     @Volatile private var ws: WebSocket? = null
     @Volatile private var record: AudioRecord? = null
 
@@ -57,33 +63,64 @@ class RemoteSpeechRecognizer(
     private lateinit var wsListening: CompletableDeferred<Boolean>
     private lateinit var finalResult: CompletableDeferred<RecognitionEvent>
 
+    protected abstract val tag: String
+
+    /** 是否需要等待服务端「listening」态（streaming-asr-server 需要；腾讯首个 code:0 即就绪，不需要）。 */
+    protected open val requiresListeningState: Boolean = true
+
+    /** 构造握手 Request（含鉴权/签名，由子类拼装）。 */
+    protected abstract fun buildRequest(): Request
+
+    /** 握手成功（wsReady）后发送的起始帧（如 {"type":"start"}）；默认不发。 */
+    protected open fun sendStart(webSocket: WebSocket) {}
+
+    /** stop() 时发送的结束帧（如 {"type":"finish"}/{"type":"end"}）。 */
+    protected abstract fun sendFinish(webSocket: WebSocket)
+
+    /** 解析一条文本消息：完成 wsReady/wsListening/finalResult、更新 lastPartialText、下发事件。 */
+    protected abstract fun handleMessage(webSocket: WebSocket, obj: JSONObject)
+
+    /** 判断「可恢复的业务级超时」（idle/timeout 等），命中则软结束而非判远端不可用。 */
+    protected open fun isRecoverableTimeout(message: String): Boolean {
+        val m = message.lowercase()
+        return m.contains("idle") || m.contains("timeout")
+    }
+
+    /** 把 WS 升级失败归类为 [ErrorKind]（HTTP 码 / 服务端 JSON code）。 */
+    protected abstract fun classifyFailure(t: Throwable, response: Response?): ErrorKind
+
     private inner class WsHandler : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            VoiceLog.i(TAG, "ws opened (${response.code})")
+            VoiceLog.i(tag, "ws opened (${response.code})")
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             try {
-                handleMessage(JSONObject(text))
+                handleMessage(webSocket, JSONObject(text))
             } catch (e: Throwable) {
-                VoiceLog.w(TAG, "bad ws message: $text", e)
+                VoiceLog.w(tag, "bad ws message: $text", e)
             }
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            VoiceLog.i(TAG, "ws closing: $code $reason")
+            VoiceLog.i(tag, "ws closing: $code $reason")
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            VoiceLog.i(TAG, "ws closed: $code $reason")
+            VoiceLog.i(tag, "ws closed: $code $reason")
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            // WS 升级失败时 OkHttp 在 response 里携带 HTTP 状态码与体。服务端对 401/503
-            // 返回结构化 JSON（{code:"auth"|"overload",fatal,retry}），据此区分鉴权/满载，
+            // WS 升级失败时 OkHttp 在 response 里携带 HTTP 状态码与体，据此区分鉴权/满载，
             // 不再一律静默回退本地；其它（TCP 不通等 response==null）→ Generic → 回退本地。
-            val (kind, detail) = classifyFailure(t, response)
-            VoiceLog.e(TAG, "ws failure: ${t.javaClass.simpleName}: ${t.message}$detail", t)
+            val kind = classifyFailure(t, response)
+            val detail = buildString {
+                val code = response?.code ?: 0
+                if (code != 0) append(" | HTTP ").append(code)
+                val body = runCatching { response?.body?.string() }.getOrNull()
+                if (!body.isNullOrEmpty()) append(" | body=").append(body.take(200))
+            }
+            VoiceLog.e(tag, "ws failure: ${t.javaClass.simpleName}: ${t.message}$detail", t)
             // 用带分类的 RemoteAsrException 同时完成 wsReady/wsListening/finalResult 与事件通道，
             // 这样 start() 经 wsReady.await() 抛出的异常与事件下发的分类一致，无竞态。
             val ex = RemoteAsrException("remote ASR ${kind.name.lowercase()}: ${t.message}", kind, t)
@@ -93,56 +130,28 @@ class RemoteSpeechRecognizer(
             if (!finalResult.isCompleted) finalResult.complete(err)
             eventChannel.trySend(err)
         }
-
-        private fun handleMessage(obj: JSONObject) {
-            when (obj.optString("type")) {
-                "status" -> {
-                    when (obj.optString("state")) {
-                        "ready" -> if (!wsReady.isCompleted) wsReady.complete(true)
-                        "listening" -> if (!wsListening.isCompleted) wsListening.complete(true)
-                    }
-                }
-                "partial" -> {
-                    val text = obj.optString("text", "")
-                    if (text.isNotEmpty()) {
-                        lastPartialText = text
-                        eventChannel.trySend(RecognitionEvent.Partial(text))
-                    }
-                }
-                "final" -> {
-                    val text = obj.optString("text", "")
-                    if (!finalResult.isCompleted) finalResult.complete(RecognitionEvent.Final(text))
-                }
-                "error" -> {
-                    val msg = obj.optString("message", "unknown")
-                    val fatal = obj.optBoolean("fatal", false)
-                    // 服务端把 idle/超时标 fatal 时，客户端不判远端不可用：以已识别内容软结束本轮，
-                    // 走正常 final 流程，保持远端模式继续可用（避免误回退本地/崩溃）。
-                    if (fatal && isRecoverableTimeout(msg)) {
-                        VoiceLog.w(TAG, "server recoverable timeout: $msg → soft finalize")
-                        val finalText = lastPartialText
-                        lastPartialText = ""
-                        eventChannel.trySend(RecognitionEvent.Final(finalText))
-                        if (!finalResult.isCompleted) finalResult.complete(RecognitionEvent.Final(finalText))
-                    } else {
-                        VoiceLog.w(TAG, "server error: $msg (fatal=$fatal)")
-                        if (fatal) {
-                            val err = RecognitionEvent.Error(RuntimeException(msg))
-                            eventChannel.trySend(err)
-                            if (!finalResult.isCompleted) finalResult.complete(err)
-                        }
-                    }
-                }
-                "pong" -> { /* heartbeat */ }
-            }
-        }
     }
 
     override val events: Flow<RecognitionEvent> = eventChannel.receiveAsFlow()
 
+    /** 子类在握手就绪消息到达时调用。 */
+    protected fun markReady() {
+        if (!wsReady.isCompleted) wsReady.complete(true)
+    }
+
+    /** 子类在进入 listening 态时调用（仅 requiresListeningState=true 的协议）。 */
+    protected fun markListening() {
+        if (!wsListening.isCompleted) wsListening.complete(true)
+    }
+
+    /** 子类收到最终结果时调用。 */
+    protected fun markFinal(event: RecognitionEvent) {
+        if (!finalResult.isCompleted) finalResult.complete(event)
+    }
+
     override suspend fun start() {
         if (started) return
-        VoiceLog.i(TAG, "start: connecting to $serverUrl")
+        VoiceLog.i(tag, "start: connecting")
 
         wsReady = CompletableDeferred()
         wsListening = CompletableDeferred()
@@ -151,25 +160,21 @@ class RemoteSpeechRecognizer(
         paused = false
         lastPartialText = ""
 
-        val request = authToken?.let { token ->
-            Request.Builder().url(serverUrl)
-                .addHeader("Authorization", "Bearer $token")
-                .build()
-        } ?: Request.Builder().url(serverUrl).build()
-
-        val freshWs = client.newWebSocket(request, WsHandler())
+        val freshWs = client.newWebSocket(buildRequest(), WsHandler())
         ws = freshWs
 
         if (!wsReady.await()) {
             throw IllegalStateException("WebSocket handshake failed")
         }
-        VoiceLog.i(TAG, "ws ready, sending start")
-        freshWs.send("""{"type":"start"}""")
+        VoiceLog.i(tag, "ws ready, sending start")
+        sendStart(freshWs)
 
-        if (!wsListening.await()) {
-            throw IllegalStateException("Server did not enter listening state")
+        if (requiresListeningState) {
+            if (!wsListening.await()) {
+                throw IllegalStateException("Server did not enter listening state")
+            }
         }
-        VoiceLog.i(TAG, "ws listening, starting recording")
+        VoiceLog.i(tag, "ws listening, starting recording")
 
         val t = Thread({ recordingLoop(freshWs) }, "remote-asr-rec").apply { isDaemon = true }
         nativeThread = t
@@ -202,14 +207,14 @@ class RemoteSpeechRecognizer(
                 val pcmBytes = shortArrayToBytes(buf, n)
                 val sent = webSocket.send(pcmBytes.toByteString())
                 if (!sent) {
-                    VoiceLog.w(TAG, "ws send failed, stopping")
+                    VoiceLog.w(tag, "ws send failed, stopping")
                     eventChannel.trySend(RecognitionEvent.Error(RuntimeException("WebSocket send queue full")))
                     break
                 }
             }
             runCatching { ar.stop() }
         } catch (e: Throwable) {
-            VoiceLog.e(TAG, "recording loop error", e)
+            VoiceLog.e(tag, "recording loop error", e)
             eventChannel.trySend(RecognitionEvent.Error(e))
         } finally {
             runCatching { record?.release() }
@@ -219,29 +224,27 @@ class RemoteSpeechRecognizer(
 
     override suspend fun stop() {
         if (!started) return
-        VoiceLog.i(TAG, "stop: finishing")
+        VoiceLog.i(tag, "stop: finishing")
         running = false
         awaitNativeThread()
         nativeThread = null
 
         val w = ws
         if (w != null) {
-            w.send("""{"type":"finish"}""")
-            // 等服务端 final 若不设上限，遇慢/失联服务端会让"完成"按钮长时间卡在提交中。
-            // 这里加超时：超时则以最近 partial 软结束（与 idle 超时策略一致），保证已识别内容落库。
+            sendFinish(w)
+            // 等服务端 final 若不设上限，遇慢/失联服务端会让「完成」按钮长时间卡在提交中。
+            // 这里加超时：超时则以最近 partial 软结束，保证已识别内容落库。
             val result: RecognitionEvent? = try {
                 withTimeout(FINAL_AWAIT_MS) { finalResult.await() }
             } catch (e: TimeoutCancellationException) {
-                VoiceLog.w(TAG, "final await timed out → soft-finalize with last partial")
+                VoiceLog.w(tag, "final await timed out → soft-finalize with last partial")
                 val finalText = lastPartialText
                 lastPartialText = ""
                 RecognitionEvent.Final(finalText)
             } catch (e: CancellationException) {
                 throw e // destroy() 取消作用域，不要吞
             } catch (e: Throwable) {
-                // finalResult 已被 onFailure 以异常完成（连接错误），事件通道也会收到 Error；
-                // 不重抛、不产出 Final，交由 handle(Error) 收尾，避免与 finish() 重复 endSession。
-                VoiceLog.w(TAG, "final await failed: ${e.javaClass.simpleName}", e)
+                VoiceLog.w(tag, "final await failed: ${e.javaClass.simpleName}", e)
                 null
             }
             if (result is RecognitionEvent.Final) eventChannel.trySend(result)
@@ -252,7 +255,7 @@ class RemoteSpeechRecognizer(
 
     override suspend fun cancel() {
         if (!started) return
-        VoiceLog.i(TAG, "cancel")
+        VoiceLog.i(tag, "cancel")
         running = false
         awaitNativeThread()
         nativeThread = null
@@ -266,24 +269,24 @@ class RemoteSpeechRecognizer(
         // 必须切到 IO，否则会卡 UI（与 SherpaRecognizer.awaitNativeThread 保持一致）。
         withContext(Dispatchers.IO) {
             val done = runCatching { t.join(2_000); !t.isAlive }.getOrDefault(false)
-            if (!done) VoiceLog.w(TAG, "native thread still alive after join(2s)")
+            if (!done) VoiceLog.w(tag, "native thread still alive after join(2s)")
         }
     }
 
     override fun pauseRecording() {
         if (!started || paused) return
-        VoiceLog.i(TAG, "pauseRecording")
+        VoiceLog.i(tag, "pauseRecording")
         paused = true
     }
 
     override fun resumeRecording() {
         if (!started || !paused) return
-        VoiceLog.i(TAG, "resumeRecording")
+        VoiceLog.i(tag, "resumeRecording")
         paused = false
     }
 
     override fun releaseNow() {
-        VoiceLog.i(TAG, "releaseNow")
+        VoiceLog.i(tag, "releaseNow")
         running = false
         nativeThread?.let { runCatching { it.join(2_000) } }
         nativeThread = null
@@ -316,40 +319,8 @@ class RemoteSpeechRecognizer(
         return bytes
     }
 
-    /** 判断是否"可恢复的业务级超时"（如用户说话停顿导致的 idle timeout），不应判远端不可用。 */
-    private fun isRecoverableTimeout(message: String): Boolean {
-        val m = message.lowercase()
-        return m.contains("idle") || m.contains("timeout")
-    }
-
-    /**
-     * 把 WS 升级失败归类为 [ErrorKind]。优先看 HTTP 状态码，其次服务端 JSON 体里的 `code`
-     * 字段（服务端两者都给，见 protocol.rs::HttpError）。response==null（连不上/非 HTTP
-     * 错误）→ [ErrorKind.Generic] → 上层回退本地。
-     */
-    private fun classifyFailure(t: Throwable, response: Response?): Pair<ErrorKind, String> {
-        val code = response?.code ?: 0
-        // body.string() 是阻塞读取；onFailure 由 OkHttp 工作线程回调，不会卡 UI。
-        val body = runCatching { response?.body?.string() }.getOrNull()
-        val serverCode = body?.let {
-            runCatching { JSONObject(it).optString("code").ifEmpty { null } }.getOrNull()
-        }
-        val detail = buildString {
-            if (code != 0) append(" | HTTP ").append(code)
-            if (serverCode != null) append(" | server code=").append(serverCode)
-            if (!body.isNullOrEmpty()) append(" | body=").append(body.take(200))
-        }
-        val kind = when {
-            code == 401 || serverCode == "auth" -> ErrorKind.RemoteAuth
-            code == 503 || serverCode == "overload" -> ErrorKind.RemoteOverload
-            else -> ErrorKind.Generic
-        }
-        return kind to detail
-    }
-
     private companion object {
-        const val TAG = "RemoteASR"
-        /** 点击"完成"后等服务端 final 的最长时间，超时则以最近 partial 软结束。 */
+        /** 点击「完成」后等服务端 final 的最长时间，超时则以最近 partial 软结束。 */
         const val FINAL_AWAIT_MS = 4_000L
     }
 }

@@ -23,6 +23,7 @@ import org.fcitx.fcitx5.android.plugin.quicksend.ui.EditEntryDialog
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.QuickSendAdapter
 import org.fcitx.fcitx5.android.plugin.quicksend.log.LogSettingsActivity
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceSettingsActivity
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteAsrSettingsActivity
 
 class PluginActivity : Activity() {
 
@@ -54,6 +55,10 @@ class PluginActivity : Activity() {
                 when (item.itemId) {
                     R.id.action_appearance -> {
                         startActivity(Intent(this, AppearanceActivity::class.java))
+                        true
+                    }
+                    R.id.action_remote_voice -> {
+                        startActivity(Intent(this, RemoteAsrSettingsActivity::class.java))
                         true
                     }
                     R.id.action_voice_settings -> {

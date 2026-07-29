@@ -32,7 +32,12 @@ class VoiceController(
     private val recognizerFactory: suspend () -> SpeechRecognizer,
     private val remote: () -> IQuickSendService?,
     private val refiner: TextRefiner = NoOpRefiner,
-    private val onSessionEnd: () -> Unit = {}
+    private val onSessionEnd: () -> Unit = {},
+    /**
+     * 若非空，则收到 Final 时不经 IPC 提交到 host 输入框，改为把最终文本回调给上层
+     * （用于设置页「单后端测试」：不依赖 host 输入框，由浮层服务判定是否含「测试」并回写 tested）。
+     */
+    private val onFinalResult: ((String) -> Unit)? = null
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow<VoiceUiState>(VoiceUiState.Idle)
@@ -181,7 +186,12 @@ class VoiceController(
                     runCatching { refiner.refine(adjustedFinal) }.getOrDefault(adjustedFinal)
                 }
                 _state.value = VoiceUiState.Finishing
-                withContext(Dispatchers.IO) {
+                val sink = onFinalResult
+                if (sink != null) {
+                    // 测试模式：不经 IPC 提交，把最终文本回调给上层判定
+                    VoiceLog.i(TAG, "final \"${event.text}\" → onFinalResult \"$refined\" (test mode)")
+                    sink(refined)
+                } else withContext(Dispatchers.IO) {
                     val r = remote()
                     if (r == null) {
                         VoiceLog.w(TAG, "final ignored (no remote): \"$refined\"")

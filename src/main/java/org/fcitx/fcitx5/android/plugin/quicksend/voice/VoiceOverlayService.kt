@@ -41,13 +41,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import org.fcitx.fcitx5.android.common.ipc.IInputWindowStateListener
 import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
 import org.fcitx.fcitx5.android.plugin.quicksend.AppLog
 import org.fcitx.fcitx5.android.plugin.quicksend.BuildConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
-import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteSpeechRecognizer
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.recognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelHolder
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaRecognizer
@@ -88,12 +91,23 @@ class VoiceOverlayService : Service() {
     private var voiceMode = VoiceMode.LOCAL
     private var currentPrefs: SharedPreferences? = null
 
+    /** 远端后端优先级链（仅 enable && tested），[queueIndex] 指向当前正在尝试的后端。 */
+    private var remoteQueue: List<RemoteBackend> = emptyList()
+    private var queueIndex = -1
+
+    /** 单后端测试模式：从设置页拉起，[testBackend] 之外的判断跳过，final 回写 tested。 */
+    private var inTestMode = false
+    private var testBackend: RemoteBackend? = null
+
+    private val backendJson = Json { ignoreUnknownKeys = true }
+
     private enum class VoiceMode { LOCAL, REMOTE, REMOTE_FALLBACK_LOCAL }
 
     private val inputWindowListener = object : IInputWindowStateListener.Stub() {
         override fun onInputWindowShown() {}
 
         override fun onInputWindowHidden() {
+            if (inTestMode) return // 测试模式：不因输入窗隐藏而关闭测试浮层
             VoiceLog.i(TAG, "input window hidden, closing voice overlay")
             mainHandler.post { closeAndStop() }
         }
@@ -135,6 +149,18 @@ class VoiceOverlayService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        // 单后端测试模式：携带待测后端 JSON。设置页点「测试」时拉起。
+        if (intent.getBooleanExtra(EXTRA_TEST_MODE, false)) {
+            val json = intent.getStringExtra(EXTRA_TEST_BACKEND_JSON)
+            testBackend = json?.let { runCatching { backendJson.decodeFromString<RemoteBackend>(it) }.getOrNull() }
+            inTestMode = testBackend != null
+            if (!inTestMode) {
+                VoiceLog.w(TAG, "test mode requested but backend json missing/invalid")
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            VoiceLog.i(TAG, "test mode for backend id=${testBackend?.id}")
+        }
         if (!bound) {
             bound = runCatching {
                 bindService(
@@ -159,53 +185,73 @@ class VoiceOverlayService : Service() {
             return
         }
         val prefs = getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE)
-        val remoteEnabled = prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)
-        if (!remoteEnabled && !VoiceModelManager.isReady(this)) {
-            VoiceLog.w(TAG, "evaluate: model not ready")
+        currentPrefs = prefs
+
+        // 测试模式：只跑指定后端，跳过「启用/模型就绪」判断，final 回写 tested。
+        if (inTestMode) {
+            val tb = testBackend
+            if (tb == null) {
+                stopSelf()
+                return
+            }
+            VoiceLog.i(TAG, "evaluate: test mode, backend=${tb.name}(${tb.id})")
+            remoteQueue = listOf(tb)
+            queueIndex = 0
+            voiceMode = VoiceMode.REMOTE
+            promptView?.visibility = View.GONE
+            buttonRow?.visibility = View.VISIBLE
+            runOnUiThread { updateUi(VoiceUiState.Initializing) }
+            createAndStartController(onFinal = { text -> onTestFinal(text) }) { tb.recognizer() }
+            return
+        }
+
+        // 正常模式：构建优先级链（enable && tested）。链空且本地模型未就绪 → 阻塞。
+        remoteQueue = RemoteBackendStore.activeBackends(this)
+        if (remoteQueue.isEmpty() && !VoiceModelManager.isReady(this)) {
+            VoiceLog.w(TAG, "evaluate: no active remote and model not ready")
             showPrompt(getString(R.string.voice_model_not_ready))
             return
         }
-        VoiceLog.i(TAG, "evaluate: ok (remote=$remoteEnabled), starting voice")
+        VoiceLog.i(TAG, "evaluate: ok, remote chain size=${remoteQueue.size}")
         startVoice(prefs)
     }
 
     private fun startVoice(prefs: android.content.SharedPreferences) {
-        currentPrefs = prefs
         promptView?.visibility = View.GONE
         buttonRow?.visibility = View.VISIBLE
-        // 初始模式：按设置走（remote 开启则网络，否则本地）。会话内的强制本地/回退由切换函数处理。
-        val mode = if (prefs.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false)) {
-            VoiceMode.REMOTE
+        if (remoteQueue.isNotEmpty()) {
+            // 有启用的远端 → 从队首进入 REMOTE；会话内强制本地/回退由切换函数处理。
+            voiceMode = VoiceMode.REMOTE
+            queueIndex = 0
+            updateForceLocalToggle()
+            launchRemoteBackend(remoteQueue[0])
         } else {
-            VoiceMode.LOCAL
+            // 无远端 → 直接本地
+            voiceMode = VoiceMode.LOCAL
+            updateForceLocalToggle()
+            VoiceLog.i(TAG, "no active remote, using local Sherpa")
+            createAndStartController { makeLocalRecognizer(prefs) }
         }
-        launchRecognizer(prefs, mode)
+    }
+
+    /** 按 [remoteQueue] 的第 [queueIndex] 个后端创建并启动识别器。 */
+    private fun launchRemoteBackend(backend: RemoteBackend) {
+        VoiceLog.i(TAG, "using remote backend #${queueIndex + 1}/${remoteQueue.size}: ${backend.name}(${backend.id})")
+        createAndStartController { backend.recognizer() }
     }
 
     /**
-     * 按指定模式创建并启动识别器。远程 → 直接用 RemoteSpeechRecognizer；本地 → 懒加载 Sherpa 模型
-     * （在 [VoiceController.start] 的 IO 线程内首次加载，不在网络模式时预占内存）。
+     * 尝试链中下一个后端（当前后端失败、但链未耗尽时）。teardown 后立即显示「初始化中」，
+     * 避免状态冻结（与切本地对称的真空期处理，见 tech-debt #2）。
      */
-    private fun launchRecognizer(prefs: android.content.SharedPreferences, mode: VoiceMode) {
-        voiceMode = mode
-        updateForceLocalToggle()
-        when (mode) {
-            VoiceMode.REMOTE -> {
-                val url = prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: ""
-                val token = prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, null)
-                if (url.isBlank()) {
-                    VoiceLog.w(TAG, "remote enabled but URL empty")
-                    showPrompt("请先配置远端服务器地址")
-                    return
-                }
-                VoiceLog.i(TAG, "using remote ASR: $url")
-                createAndStartController { RemoteSpeechRecognizer(url, token) }
-            }
-            VoiceMode.LOCAL, VoiceMode.REMOTE_FALLBACK_LOCAL -> {
-                VoiceLog.i(TAG, "using local Sherpa model (mode=$mode)")
-                createAndStartController { makeLocalRecognizer(prefs) }
-            }
-        }
+    private fun switchToNextRemote() {
+        val next = queueIndex + 1
+        if (next >= remoteQueue.size) return
+        VoiceLog.i(TAG, "switch to next remote #$next")
+        queueIndex = next
+        teardownCurrentController()
+        runOnUiThread { updateUi(VoiceUiState.Initializing) }
+        launchRemoteBackend(remoteQueue[next])
     }
 
     /**
@@ -248,24 +294,22 @@ class VoiceOverlayService : Service() {
         }
     }
 
-    /** 切回网络模式（用户点击强制本地开关关闭时）。 */
+    /** 切回网络模式（用户点击强制本地开关关闭时）：从链首重入。 */
     private fun switchToRemoteMode() {
-        val prefs = currentPrefs ?: return
-        val url = prefs.getString(QuickSendPrefs.VOICE_REMOTE_URL, "") ?: ""
-        val token = prefs.getString(QuickSendPrefs.VOICE_REMOTE_TOKEN, null)
-        if (url.isBlank()) {
-            VoiceLog.w(TAG, "switch to remote: URL empty")
-            showPrompt("请先配置远端服务器地址")
+        if (remoteQueue.isEmpty()) {
+            VoiceLog.w(TAG, "switch to remote: no active backend")
+            showPrompt(getString(R.string.voice_no_active_remote))
             return
         }
-        VoiceLog.i(TAG, "switch to remote (user toggled back)")
+        VoiceLog.i(TAG, "switch to remote (user toggled back), from head")
         voiceMode = VoiceMode.REMOTE
+        queueIndex = 0
         updateForceLocalToggle()
         teardownCurrentController()
         // 与切本地对称：teardown 后到新 controller 接管前先显示「[N]初始化中」，
         // 避免冻结在切换前的本地状态文案；WebSocket 握手期间亦同。
         runOnUiThread { updateUi(VoiceUiState.Initializing) }
-        createAndStartController { RemoteSpeechRecognizer(url, token) }
+        launchRemoteBackend(remoteQueue[0])
     }
 
     /** 悬浮窗顶部的「强制本地」开关：仅在远端（网络）模式可用时显示，仅当前会话生效。 */
@@ -284,10 +328,10 @@ class VoiceOverlayService : Service() {
         controller = null
     }
 
-    /** 强制本地开关的显隐与状态：远端未启用则隐藏；当前为本地（手动/回退）时高亮。 */
+    /** 强制本地开关的显隐与状态：无可用远端 / 测试模式时隐藏；当前为本地（手动/回退）时高亮。 */
     private fun updateForceLocalToggle() {
         val btn = forceLocalToggle ?: return
-        val remoteAvailable = currentPrefs?.getBoolean(QuickSendPrefs.VOICE_REMOTE_ENABLED, false) == true
+        val remoteAvailable = !inTestMode && remoteQueue.isNotEmpty()
         btn.visibility = if (remoteAvailable) View.VISIBLE else View.GONE
         val active = voiceMode != VoiceMode.REMOTE
         val color = if (active) resolveColor(R.color.qs_accent) else resolveColor(R.color.qs_text_secondary)
@@ -332,11 +376,15 @@ class VoiceOverlayService : Service() {
             else -> default
         }
 
-    private fun createAndStartController(factory: suspend () -> SpeechRecognizer) {
+    private fun createAndStartController(
+        onFinal: ((String) -> Unit)? = null,
+        factory: suspend () -> SpeechRecognizer
+    ) {
         val ctrl = VoiceController(
             recognizerFactory = factory,
             remote = { remoteService },
-            onSessionEnd = { mainHandler.post { stopSelf() } }
+            onSessionEnd = { mainHandler.post { stopSelf() } },
+            onFinalResult = onFinal
         )
         controller = ctrl
         collectJob?.cancel()
@@ -380,12 +428,25 @@ class VoiceOverlayService : Service() {
             }
             VoiceUiState.Finishing -> st.text = buildStatusText(getString(R.string.voice_committing))
             is VoiceUiState.Error -> {
-                // 远端模式下按错误分类决定策略——
-                //   鉴权失败/满载：不静默回退本地，给出明确提示（让用户感知 Token 错或服务忙），
-                //   用户仍可点顶部「强制本地」开关手动切本地；
-                //   其它（网络不通等）：维持自动回退本地（[NL]）。
-                // 已在本地模式的错误直接展示文案。
+                // 链式策略——
+                //   链未耗尽：当前后端失败即试下一个（不论错误类型）；
+                //   链已耗尽：鉴权/满载不静默回退本地（明确提示），用户可点「强制本地」；其它（网络不通等）自动回退本地（[NL]）；
+                //   测试模式：提示失败并关闭；
+                //   已在本地模式的错误直接展示文案。
                 when {
+                    inTestMode -> {
+                        st.text = state.message
+                        Toast.makeText(
+                            this,
+                            getString(R.string.voice_test_failed_msg, state.message),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        mainHandler.post { closeAndStop() }
+                    }
+                    voiceMode == VoiceMode.REMOTE && queueIndex < remoteQueue.lastIndex -> {
+                        switchToNextRemote()
+                        return
+                    }
                     voiceMode == VoiceMode.REMOTE && state.kind == ErrorKind.RemoteAuth -> {
                         val msg = getString(R.string.voice_remote_auth_error)
                         st.text = buildStatusText(msg)
@@ -395,7 +456,7 @@ class VoiceOverlayService : Service() {
                         st.text = buildStatusText(getString(R.string.voice_remote_overload_error))
                     }
                     voiceMode == VoiceMode.REMOTE -> {
-                        switchToLocalMode(VoiceMode.REMOTE_FALLBACK_LOCAL, "remote failed (${state.kind})")
+                        switchToLocalMode(VoiceMode.REMOTE_FALLBACK_LOCAL, "all remotes failed (${state.kind})")
                         return
                     }
                     else -> st.text = state.message
@@ -590,6 +651,20 @@ class VoiceOverlayService : Service() {
         statusText?.text = ""
     }
 
+    /** 测试模式收到最终结果：判定是否含「测试」→ 回写 tested → 提示 → 关闭。 */
+    private fun onTestFinal(text: String) {
+        val pass = text.contains("测试")
+        val tb = testBackend
+        if (tb != null) RemoteBackendStore.setTested(this, tb.id, pass)
+        val msg = if (pass) getString(R.string.voice_test_passed)
+        else getString(R.string.voice_test_failed_msg, text.ifBlank { getString(R.string.voice_test_no_result) })
+        VoiceLog.i(TAG, "test final: \"$text\" → pass=$pass")
+        mainHandler.post {
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            closeAndStop()
+        }
+    }
+
     private fun closeAndStop() {
         runCatching { controller?.close() }
         stopSelf()
@@ -670,6 +745,10 @@ class VoiceOverlayService : Service() {
 
     companion object {
         const val ACTION_START = "org.fcitx.fcitx5.android.plugin.quicksend.voice.START"
+        /** 单后端测试模式开关（intent extra，boolean）。 */
+        const val EXTRA_TEST_MODE = "test_mode"
+        /** 待测后端 JSON（intent extra，[RemoteBackend] 序列化串）。 */
+        const val EXTRA_TEST_BACKEND_JSON = "test_backend_json"
         private const val CHANNEL_ID = "voice_input"
         private const val NOTIF_ID = 0x7e01
         private const val TAG = "VoiceOverlay"

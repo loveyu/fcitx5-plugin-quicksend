@@ -7,7 +7,6 @@ package org.fcitx.fcitx5.android.plugin.quicksend.voice
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.Gravity
@@ -59,11 +58,6 @@ class VoiceSettingsActivity : Activity() {
             updateState(VoiceModelManager.state.value)
         }
         binding.resetButton.setOnClickListener { resetToDefaults() }
-
-        binding.remoteSettingsButton.setOnClickListener {
-            persistPrefs()
-            startActivity(Intent(this, RemoteVoiceSettingsActivity::class.java))
-        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED

@@ -65,9 +65,9 @@
             android:exported="false"
             android:theme="@style/Theme.QuickSend" />
 
-        <!-- 远端语音识别设置页 -->
+        <!-- 远端语音识别设置页（Compose + Material3，列表 + 抽屉编辑 + 单后端测试） -->
         <activity
-            android:name="org.fcitx.fcitx5.android.plugin.quicksend.voice.RemoteVoiceSettingsActivity"
+            android:name="org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteAsrSettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.QuickSend" />
 

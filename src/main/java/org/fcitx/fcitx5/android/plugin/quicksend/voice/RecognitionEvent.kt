@@ -42,7 +42,7 @@ enum class ErrorKind {
 
 /**
  * 远端 ASR 失败异常，携带 [kind] 以便上层（VoiceController / Overlay）按分类决定回退与
- * 提示。同一实例既被 [RemoteSpeechRecognizer.start] 抛出、又通过事件通道下发，确保两条
+ * 提示。同一实例既被远端识别器的 start() 抛出、又通过事件通道下发，确保两条
  * 路径分类一致（避免 start() 抛通用异常与事件携带分类互相覆盖的竞态）。
  */
 class RemoteAsrException(

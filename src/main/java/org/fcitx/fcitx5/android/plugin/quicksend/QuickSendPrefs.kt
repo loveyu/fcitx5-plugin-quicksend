@@ -74,9 +74,9 @@ object QuickSendPrefs {
 
     // ===== 远端 ASR =====
 
-    const val VOICE_REMOTE_ENABLED = "voice_remote_enabled"
-    const val VOICE_REMOTE_URL = "voice_remote_url"
-    const val VOICE_REMOTE_TOKEN = "voice_remote_token"
+    /** 远端 ASR 后端列表（JSON 数组，[org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore]）。
+     *  替代旧的 voice_remote_enabled/url/token 三个键（旧配置不保留、不迁移）。 */
+    const val VOICE_REMOTE_BACKENDS = "voice_remote_backends"
 
     // ===== 调试日志 =====
 
