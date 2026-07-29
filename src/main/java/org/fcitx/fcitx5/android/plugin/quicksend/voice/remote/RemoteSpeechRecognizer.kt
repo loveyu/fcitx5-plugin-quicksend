@@ -41,6 +41,8 @@ class RemoteSpeechRecognizer(
     @Volatile private var paused = false
     @Volatile private var started = false
     @Volatile private var nativeThread: Thread? = null
+    /** 最近一次 partial 文本：服务端业务级超时（idle）时用作软结束的 final 内容。 */
+    @Volatile private var lastPartialText: String = ""
     @Volatile private var ws: WebSocket? = null
     @Volatile private var record: AudioRecord? = null
 
@@ -87,7 +89,10 @@ class RemoteSpeechRecognizer(
                 }
                 "partial" -> {
                     val text = obj.optString("text", "")
-                    if (text.isNotEmpty()) eventChannel.trySend(RecognitionEvent.Partial(text))
+                    if (text.isNotEmpty()) {
+                        lastPartialText = text
+                        eventChannel.trySend(RecognitionEvent.Partial(text))
+                    }
                 }
                 "final" -> {
                     val text = obj.optString("text", "")
@@ -96,11 +101,21 @@ class RemoteSpeechRecognizer(
                 "error" -> {
                     val msg = obj.optString("message", "unknown")
                     val fatal = obj.optBoolean("fatal", false)
-                    VoiceLog.w(TAG, "server error: $msg (fatal=$fatal)")
-                    if (fatal) {
-                        val err = RecognitionEvent.Error(RuntimeException(msg))
-                        eventChannel.trySend(err)
-                        if (!finalResult.isCompleted) finalResult.complete(err)
+                    // 服务端把 idle/超时标 fatal 时，客户端不判远端不可用：以已识别内容软结束本轮，
+                    // 走正常 final 流程，保持远端模式继续可用（避免误回退本地/崩溃）。
+                    if (fatal && isRecoverableTimeout(msg)) {
+                        VoiceLog.w(TAG, "server recoverable timeout: $msg → soft finalize")
+                        val finalText = lastPartialText
+                        lastPartialText = ""
+                        eventChannel.trySend(RecognitionEvent.Final(finalText))
+                        if (!finalResult.isCompleted) finalResult.complete(RecognitionEvent.Final(finalText))
+                    } else {
+                        VoiceLog.w(TAG, "server error: $msg (fatal=$fatal)")
+                        if (fatal) {
+                            val err = RecognitionEvent.Error(RuntimeException(msg))
+                            eventChannel.trySend(err)
+                            if (!finalResult.isCompleted) finalResult.complete(err)
+                        }
                     }
                 }
                 "pong" -> { /* heartbeat */ }
@@ -119,6 +134,7 @@ class RemoteSpeechRecognizer(
         finalResult = CompletableDeferred()
         running = true
         paused = false
+        lastPartialText = ""
 
         val request = authToken?.let { token ->
             Request.Builder().url(serverUrl)
@@ -257,6 +273,12 @@ class RemoteSpeechRecognizer(
             bytes[i * 2 + 1] = (v shr 8 and 0xFF).toByte()
         }
         return bytes
+    }
+
+    /** 判断是否"可恢复的业务级超时"（如用户说话停顿导致的 idle timeout），不应判远端不可用。 */
+    private fun isRecoverableTimeout(message: String): Boolean {
+        val m = message.lowercase()
+        return m.contains("idle") || m.contains("timeout")
     }
 
     private companion object {
