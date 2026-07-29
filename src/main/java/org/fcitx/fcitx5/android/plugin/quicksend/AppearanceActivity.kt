@@ -134,6 +134,7 @@ class AppearanceActivity : Activity() {
         val chipBgView = if (isLight) binding.chipBgLight else binding.chipBgDark
         val chipTextView = if (isLight) binding.chipTextLight else binding.chipTextDark
 
+        val currentBg = prefs.getInt(bgKey, QuickSendPrefs.DEFAULT_BG_COLOR)
         val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
         val density = resources.displayMetrics.density
 
@@ -146,10 +147,14 @@ class AppearanceActivity : Activity() {
 
         val chipSize = (48 * density).toInt()
         val margin = (6 * density).toInt()
+        val selectedBorder = (3 * density).toInt()
+
+        var selectedChipView: android.widget.FrameLayout? = null
 
         ColorPickerDialog.PRESETS.forEachIndexed { _, pair ->
             val (_, bgColor) = pair
             val textColor = ColorPickerDialog.contrastTextColor(bgColor)
+            val isSelected = bgColor == currentBg
 
             val chip = android.widget.FrameLayout(this).apply {
                 val lp = android.widget.GridLayout.LayoutParams().apply {
@@ -163,10 +168,17 @@ class AppearanceActivity : Activity() {
             val bg = View(this).apply {
                 layoutParams = ViewGroup.LayoutParams(chipSize, chipSize)
             }
-            bg.background = GradientDrawable().apply {
+
+            val bgDrawable = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(bgColor)
             }
+            if (isSelected) {
+                val accentColor = resources.getColor(R.color.qs_accent, theme)
+                bgDrawable.setStroke(selectedBorder, accentColor)
+                selectedChipView = chip
+            }
+            bg.background = bgDrawable
             chip.addView(bg)
 
             val label = TextView(this).apply {
@@ -186,6 +198,13 @@ class AppearanceActivity : Activity() {
                 if (isLight) refreshPreviewLight() else refreshPreviewDark()
                 refreshColorChip(chipBgView, bgColor)
                 refreshColorChip(chipTextView, textColor)
+
+                selectedChipView?.let { prev ->
+                    (prev.getChildAt(0)?.background as? GradientDrawable)?.setStroke(0, 0)
+                }
+                val accentColor = resources.getColor(R.color.qs_accent, theme)
+                (bg.background as GradientDrawable).apply { setStroke(selectedBorder, accentColor) }
+                selectedChipView = chip
             }
 
             gridContainer.addView(chip)
