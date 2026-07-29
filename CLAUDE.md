@@ -58,11 +58,10 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 
 ## 文档索引
 
-| 文档 | 内容 |
-|------|------|
-| [docs/architecture.md](docs/architecture.md) | 组件全图、IPC 双向绑定、数据流、各 service 职责 |
-| [docs/voice-subsystem.md](docs/voice-subsystem.md) | 语音管线、native 线程模型、模型下载与代理 |
-| [docs/build-and-release.md](docs/build-and-release.md) | 构建/签名/CI/版本号/Sherpa AAR/镜像源细节 |
-| docs/fcitx5-plugin-quicksend/requirements-analysis.md | 原始需求分析（设计期） |
-| docs/fcitx5-plugin-quicksend/data-model-proposal.md | 数据模型与特殊键映射表（type=1 键名 ↔ KEYCODE 全表，查表用） |
-| docs/fcitx5-plugin-quicksend/implementation-guide.md | 原始实现指南（设计期，部分路径指向 host） |
+专题文档（`docs/`），按需查阅。**先进 [docs/ai-dev-playbook.md](docs/ai-dev-playbook.md)** 看高频操作速查与踩坑入口，详解再按主题展开：
+
+- [docs/ai-dev-playbook.md](docs/ai-dev-playbook.md) — **AI 协作开发操作手册**（构建/IPC 联调/语音坑/数据层/日志/协作规范速查，详解交叉引用各专题）
+- [docs/architecture.md](docs/architecture.md) — 组件全图、IPC 双向绑定、数据层、发送链路、各 service 职责
+- [docs/voice-subsystem.md](docs/voice-subsystem.md) — 语音管线、状态机、native 线程铁律、模型下载与代理、识别参数
+- [docs/build-and-release.md](docs/build-and-release.md) — 构建/签名/CI/版本号/Sherpa AAR/镜像源细节
+- [docs/tech-debt.md](docs/tech-debt.md) — 历史坑与设计权衡活文档（native SIGSEGV、切换真空期、远端回退策略、R8 混淆等；修复或变化后更新）

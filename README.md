@@ -67,14 +67,10 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 
 ## 文档
 
-实现与运维文档（`docs/`）：
+实现与运维文档（`docs/`），**先看 [`ai-dev-playbook.md`](docs/ai-dev-playbook.md)** 获取高频操作速查与踩坑入口：
 
+- [`ai-dev-playbook.md`](docs/ai-dev-playbook.md) — AI 协作开发操作手册（构建 / IPC 联调 / 语音坑 / 数据层 / 日志 / 规范速查）
 - [`architecture.md`](docs/architecture.md) — 组件架构、IPC 双向绑定、数据流
 - [`voice-subsystem.md`](docs/voice-subsystem.md) — 语音管线、native 线程模型、模型下载与代理
 - [`build-and-release.md`](docs/build-and-release.md) — 构建 / 签名 / CI / 版本号 / 镜像源细节
-
-需求与设计文档（[`docs/fcitx5-plugin-quicksend/`](docs/fcitx5-plugin-quicksend/)）：
-
-- `requirements-analysis.md` — 需求分析
-- `data-model-proposal.md` — 数据模型与特殊键映射表
-- `implementation-guide.md` — 实现指南（设计期）
+- [`tech-debt.md`](docs/tech-debt.md) — 历史坑与设计权衡活文档
