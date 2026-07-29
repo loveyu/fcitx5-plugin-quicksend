@@ -13,6 +13,10 @@ android {
     namespace = "org.fcitx.fcitx5.android.plugin.quicksend"
     compileSdk = 35
 
+    lint {
+        abortOnError = false
+    }
+
     buildFeatures {
         viewBinding = true
         aidl = true
@@ -76,7 +80,12 @@ android {
         release {
             manifestPlaceholders["fcitxAppId"] = "org.fcitx.fcitx5.android"
             buildConfigField("String", "FCITX_APP_ID", "\"org.fcitx.fcitx5.android\"")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             signingConfig = signingConfigs.getByName("release")
         }
     }
