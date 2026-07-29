@@ -89,12 +89,12 @@ QuickSendEntry.segments
 
 `QuickSendOverlayService.onCreate` 绑定 host 并 `registerInputWindowStateListener`。host 在 `onWindowShown/onWindowHidden` 时 `oneway` 回调（binder 线程）→ `mainHandler.post` 到主线程 `showButton/hideButton/hideList`。不轮询、不常驻按钮。`onStartCommand` 返回 `START_STICKY` 保活（仅监听，按钮按需显隐）。`ACTION_HIDE` 触发 `stopSelf`。
 
-## UI 层（`ui/`）
+## UI 层
 
-- `EditEntryDialog`：段编辑器（FlowLayout + 特殊键分组下拉 `KeyPicker`），`SegmentFormatter` 负责 label/段渲染显示。
-- `QuickSendAdapter`：RecyclerView 条目列表。
-- `FlowLayout`：横向自动换行布局，承载内容段 chip。
-- 资源：`res/values` 与 `res/values-night` 双色，悬浮窗虽是 Service 上下文但随系统 uiMode 切日夜。
+- **全应用 Compose + Material3**（悬浮窗除外）。所有页面/弹窗 = `ComponentActivity` + `setContent { QuickSendTheme { XxxScreen(onBack = { finish() }) } }`，共用 `ui/theme/QuickSendTheme`（随系统深色模式 light/dark baseline）与 `ui/components/`（`QuickSendTopBar` 统一 `ic_arrow_back` 图标返回 + 可选 actions、`SettingSwitchRow`、`SettingTextFieldRow`、`SectionHeader`、`HelpIconButton`、颜色 UI）。
+- 主页 `PluginActivity`：`QuickSendTopBar` + 溢出 `DropdownMenu`（外观/远端语音/本地语音/日志）+ 悬浮开关 + `LazyColumn` 条目卡 + FAB；条目编辑由 `ui/EditEntrySheet`（`ModalBottomSheet` + `FlowRow` 段芯片 + 特殊键 `AlertDialog`）承担。`SegmentFormatter` 负责 label/段渲染显示。
+- 仅悬浮模块（`QuickSendOverlayService`/`VoiceOverlayService`）仍是编程式 View（WindowManager overlay，非页面）。
+- 资源：`res/values` 与 `res/values-night` 双色（悬浮窗 Service 上下文随系统 uiMode 切日夜）；Compose 颜色走 `QuickSendTheme` baseline 配色。无 XML 布局、无 ViewBinding。
 
 ## 跨进程文本注入
 

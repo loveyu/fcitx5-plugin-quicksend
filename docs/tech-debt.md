@@ -55,7 +55,7 @@
 - **无 universal APK**：ABI 拆分控单包体积（Sherpa native 库随 ABI 拆开）。
 - **模型进程级单例**：`SherpaModelHolder` 持 `OnlineRecognizer` 常驻内存，插件不销毁不释放；`RecognitionConfig` 变更按 `toSignature()` 自动重载。代价是占用内存（数十 MB）；收益是避免每次语音会话重载（~1-5s）。
 - **远端失败默认不静默回退**（鉴权/满载）：用「明确提示」换「用户感知」，避免误以为本地正常。
-- **Compose 仅限远端设置页**：引入 `androidx.compose.material3` 只为新建的多后端设置页（列表 + 抽屉 + 拖拽）。`PluginActivity`/`VoiceSettingsActivity`/`AppearanceActivity`/`LogSettingsActivity`/`EditEntryDialog` 与两个悬浮模块仍用 XML/编程式 View，未迁移。代价是两套 UI 栈并存；收益是远端页复杂交互快速落地、零回归风险。
+- **全应用 Compose（悬浮窗除外）**：所有页面与弹窗（主页、本地语音设置、外观、日志、远端语音识别、编辑条目抽屉、颜色选择器）均已迁移到 Jetpack Compose + Material3，共用 `ui/theme/QuickSendTheme`（随系统深色模式）与 `ui/components/`（`QuickSendTopBar` 统一图标返回等）。仅两个悬浮模块（`QuickSendOverlayService`/`VoiceOverlayService`，WindowManager overlay）仍是编程式 View——它们不是「页面」且需直接操作窗口，保持 View 实现不动。代价是悬浮窗与页面两套 UI 栈并存；收益是页面层观感统一、亮/暗模式一致、无 XML/ViewBinding 维护负担。旧的 `QuickSendAdapter`/`FlowLayout`/`KeyPicker`/`ColorPickerDialog`/`OverlayButtonRenderer` 及全部布局 XML 已删除。
 - **拖拽排序原生实现**：远端列表用 `detectDragGesturesAfterLongPress` + 固定行高 + `graphicsLayer` 位移自实现，不引入第三方 reorderable 库。代价是无自动滚动（后端数量少，可接受）；收益是零新增依赖、镜像源不受影响。
 - **腾讯签名自带 Base64**：`TencentV2Signing` 自带 RFC4648 base64 而非用 `android.util.Base64`（minSdk 24）/`java.util.Base64`（API 26）。代价是多 ~20 行代码；收益是纯 JVM 可单测、避开两个 Base64 的 API 版本两难。
 

@@ -10,6 +10,38 @@ plugins {
     id("com.google.devtools.ksp") version "2.2.10-2.0.2"
 }
 
+// 版本号取自 git tag（发布时打的 tag 即为版本），不再维护 version.properties。
+// versionName = 最近的 git tag（去掉前缀 v，如 v0.9.0 → 0.9.0）；
+// versionCode 由语义化版本换算（基址 9_000_000，单调且高于历史手工码 1_000_0xx）。
+// CI 可用 PLUGIN_VERSION / PLUGIN_VERSION_CODE 环境变量覆盖。
+fun runGitCmd(vararg args: String): String = try {
+    val process = ProcessBuilder("git", *args)
+        .directory(rootProject.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().readText().trim()
+    process.waitFor()
+    output
+} catch (e: Exception) {
+    ""
+}
+
+fun gitTagName(): String =
+    runGitCmd("describe", "--tags", "--abbrev=0").removePrefix("v")
+
+fun gitCommitCount(): Int =
+    runGitCmd("rev-list", "--count", "HEAD").toIntOrNull() ?: 0
+
+/** 语义化版本 → versionCode：9_000_000 + major*100_000 + minor*1_000 + patch。 */
+fun tagToVersionCode(tag: String): Int? {
+    val parts = tag.split(".").mapNotNull { it.toIntOrNull() }
+    if (parts.size < 2) return null
+    val major = parts.getOrElse(0) { 0 }
+    val minor = parts.getOrElse(1) { 0 }
+    val patch = parts.getOrElse(2) { 0 }
+    return 9_000_000 + major * 100_000 + minor * 1_000 + patch
+}
+
 android {
     namespace = "org.fcitx.fcitx5.android.plugin.quicksend"
     compileSdk = 35
@@ -19,7 +51,6 @@ android {
     }
 
     buildFeatures {
-        viewBinding = true
         aidl = true
         buildConfig = true
         compose = true
@@ -29,24 +60,13 @@ android {
         applicationId = "org.fcitx.fcitx5.android.plugin.quicksend"
         minSdk = 24
         targetSdk = 35
-        val versionProps = Properties()
-        listOf("version.properties", "version.local.properties").forEach { name ->
-            val f = rootProject.file(name)
-            if (f.exists()) {
-                f.inputStream().use { versionProps.load(it) }
-            }
-        }
+        val tagName = gitTagName()
         val envVersionName = System.getenv("PLUGIN_VERSION")
         val envVersionCode = System.getenv("PLUGIN_VERSION_CODE")
-        val fileVersionName = versionProps.getProperty("versionName")
-        val fileVersionCode = versionProps.getProperty("versionCode")
-        val fallbackVersionName = "0.1.0"
-        val fallbackVersionCode = 1000000
-
-        versionName = envVersionName ?: fileVersionName ?: fallbackVersionName
+        versionName = envVersionName ?: tagName.ifBlank { "0.0.0-dev" }
         versionCode = envVersionCode?.toIntOrNull()
-            ?: fileVersionCode?.toIntOrNull()
-            ?: fallbackVersionCode
+            ?: tagToVersionCode(tagName)
+            ?: (1_000_000 + gitCommitCount())
     }
 
     compileOptions {
@@ -116,11 +136,7 @@ dependencies {
     // 协程
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // UI: 条目列表
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-
-    // UI: Jetpack Compose + Material3 —— 仅用于新的「远端语音识别」设置页（列表 + 抽屉）。
-    // 其余页面/弹窗/两个悬浮模块仍用 XML/编程式 View，未迁移。
+    // UI: 全应用 Jetpack Compose + Material3（页面与弹窗；悬浮窗仍为编程式 View）。
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")

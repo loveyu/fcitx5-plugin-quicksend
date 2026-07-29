@@ -29,7 +29,7 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 > ⚠️ **坑 1（最关键）——签名一致**：插件经 `protectionLevel="signature"` 的 IPC 权限绑定 host，**双方必须同一签名证书**。debug 双方都用标准 Android debug keystore；release 用与 host 一致的 keystore（配置在 `local.properties` 的 `signing.*` 或 `SIGNING_*` 环境变量）。签名不一致 → 绑定失败 → 所有发送/注入都不工作。
 > ⚠️ **坑 2——镜像源本地/CI 不一致**：仓库内 `settings.gradle.kts` 前置阿里云镜像、`gradle-wrapper.properties` 用腾讯云 gradle 分发镜像（为被墙环境）。**CI 会用 `sed` 把它们改回官方源**。改仓库源时**两处都要同步**。
 > ⚠️ **坑 3——Sherpa AAR 不入库**：`libs/*.aar` 被 gitignore（~40MB），构建期由 `downloadSherpaAar` 从 HuggingFace 拉（带 `hf-mirror.com` 兜底）。本地被墙时手动放 AAR 或给 Gradle 配代理（`gradle.properties` 的 `https.proxyHost/Port`）。
-> 💡 **版本号优先级**：环境变量 `PLUGIN_VERSION`/`PLUGIN_VERSION_CODE` > `version.properties` > gitignore 的 `version.local.properties` > 兜底 `0.1.0`。CI release 用 git tag 名作 `PLUGIN_VERSION`。
+> 💡 **版本号由 git tag 决定**（不在代码里维护）：`versionName` = 最近 tag 去 `v` 前缀；`versionCode` = `9_000_000 + major*100_000 + minor*1_000 + patch`。环境变量 `PLUGIN_VERSION`/`PLUGIN_VERSION_CODE` 可覆盖（CI 用）。发版=打 tag，无需改文件。
 
 → 构建/签名/CI/版本号/AAR/镜像源完整细节见 [build-and-release.md](build-and-release.md)。
 
@@ -76,6 +76,6 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 ## 6. 协作规范（AI 写代码 / 文档时遵守）
 
 - **代码风格**：注释用**中文**；协程 + `StateFlow` 驱动 UI；跨进程序列化用 `kotlinx.serialization`；IPC 调用切 `Dispatchers.IO`（host 端可能派发到 IMS 主线程阻塞）。
-- **技术栈约束**：Kotlin `2.2.x` / AGP `9.x` / Gradle `9.x` / KSP / Room；**JDK 17+** 运行 Gradle，字节码 Java 11。UI 以 XML + ViewBinding 为主；**仅远端 ASR 设置页用 Jetpack Compose + Material3**（`org.jetbrains.kotlin.plugin.compose` 插件 + Compose BOM），其余页面/弹窗/两个悬浮模块未迁移。无 instrumentation 测试。
+- **技术栈约束**：Kotlin `2.2.x` / AGP `9.x` / Gradle `9.x` / KSP / Room；**JDK 17+** 运行 Gradle，字节码 Java 11。**所有页面与弹窗用 Jetpack Compose + Material3**（`org.jetbrains.kotlin.plugin.compose` 插件 + Compose BOM），共用 `ui/theme/QuickSendTheme`（随系统深色模式）与 `ui/components/`（`QuickSendTopBar` 图标返回、`SettingSwitchRow`、`SettingTextFieldRow`、`SectionHeader`、`HelpIconButton`）；新增页面照此模板（`ComponentActivity` + `setContent { QuickSendTheme { XxxScreen(onBack={finish()}) } }`）。仅两个悬浮模块仍是编程式 View（WindowManager overlay，非页面）。无 XML 布局、无 ViewBinding、无 instrumentation 测试。
 - **文档单一权威**：每个技术主题一处权威，其它文档**交叉引用**而非复制；改「清单型」内容必须同步对应 docs——新增/修复坑 → [tech-debt.md](tech-debt.md)；IPC/组件变更 → [architecture.md](architecture.md)；语音变更 → [voice-subsystem.md](voice-subsystem.md)；构建/签名/CI 变更 → [build-and-release.md](build-and-release.md)。
 - **改动前先确认**：任何改文件/系统的操作先说明意图，获同意再动手（见 [CLAUDE.md](../CLAUDE.md)）。

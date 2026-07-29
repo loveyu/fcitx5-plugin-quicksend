@@ -56,7 +56,7 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 - **签名一致**：插件通过 signature 级 IPC 权限绑定 host，**双方必须用相同签名证书**。debug：双方都用标准 Android debug keystore；release：用与 host 一致的 release keystore。签名配置来自 `local.properties` 的 `signing.*` 或 `SIGNING_*` 环境变量。
 - **镜像源**：`settings.gradle.kts` 前置阿里云镜像、`gradle-wrapper.properties` 用腾讯云 gradle 分发镜像。**CI 会用 `sed` 把这些改回官方源**，本地依赖这些镜像（被墙环境）。改仓库源时两处都要看。
 - **Sherpa AAR 不入库**：`libs/*.aar` 被 gitignore（~40MB），构建期由 `downloadSherpaAar` 任务从 HF 拉（带 `hf-mirror.com` 兜底）。本地被墙时可手动放 AAR 或给 Gradle 配代理（`gradle.properties` 的 `https.proxyHost/Port`）。
-- **版本号**：`version.properties`（`versionName`/`versionCode`）← 可被环境变量 `PLUGIN_VERSION`/`PLUGIN_VERSION_CODE` 或 gitignore 的 `version.local.properties` 覆盖。CI release 用 git tag 作 `PLUGIN_VERSION`。
+- **版本号**：不在代码里维护，**由 git tag 决定**（`build.gradle.kts` 的 `gitTagName()`/`tagToVersionCode()`）。`versionName` = 最近 tag 去 `v` 前缀；`versionCode` = `9_000_000 + major*100_000 + minor*1_000 + patch`（如 `0.9.0`→`9009000`）。环境变量 `PLUGIN_VERSION`/`PLUGIN_VERSION_CODE` 可覆盖（CI 用）。发版=打 tag，无需改文件。
 
 ## 文档索引
 

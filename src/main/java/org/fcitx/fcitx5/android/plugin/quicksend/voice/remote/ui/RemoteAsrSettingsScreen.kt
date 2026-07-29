@@ -22,13 +22,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -42,10 +42,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.QuickSendTopBar
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.StreamingAsrServerBackend
@@ -96,11 +98,9 @@ fun RemoteAsrSettingsScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.remote_voice_title)) },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
-                }
+            QuickSendTopBar(
+                title = stringResource(R.string.remote_voice_title),
+                onBack = onBack
             )
         },
         floatingActionButton = {
@@ -226,7 +226,11 @@ private fun BackendList(
                             }
                             .padding(horizontal = 6.dp, vertical = 8.dp)
                     ) {
-                        Text("≡", style = MaterialTheme.typography.titleLarge)
+                        Icon(
+                            painter = painterResource(R.drawable.ic_drag_handle),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Column(
                         Modifier

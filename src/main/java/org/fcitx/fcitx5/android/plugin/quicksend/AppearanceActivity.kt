@@ -1,227 +1,296 @@
+/*
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-FileCopyrightText: Copyright 2026 Fcitx5 for Android Contributors
+ */
 package org.fcitx.fcitx5.android.plugin.quicksend
 
-import android.app.Activity
-import android.app.AlertDialog
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
+import android.content.Context
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.widget.TextView
-import org.fcitx.fcitx5.android.plugin.quicksend.databinding.ActivityAppearanceBinding
-import org.fcitx.fcitx5.android.plugin.quicksend.ui.ColorPickerDialog
-import org.fcitx.fcitx5.android.plugin.quicksend.ui.OverlayButtonRenderer
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.ColorChip
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.ColorPickerDialog
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.PreviewButton
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.COLOR_PRESETS
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.QuickSendTopBar
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.SectionHeader
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.contrastTextColor
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.theme.QuickSendTheme
 
-class AppearanceActivity : Activity() {
-
-    private lateinit var binding: ActivityAppearanceBinding
-    private val prefs by lazy { getSharedPreferences(QuickSendPrefs.FILE, MODE_PRIVATE) }
-
+/**
+ * 悬浮按钮外观设置：按钮文字 + 日/夜模式的背景色/文字色（HSV 选择器 + 预设）+ 实时预览 +
+ * 重置位置。颜色独立存储日/夜两套。
+ */
+class AppearanceActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityAppearanceBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContent {
+            QuickSendTheme {
+                AppearanceScreen(onBack = { finish() })
+            }
+        }
+    }
+}
 
-        binding.backButton.setOnClickListener { finish() }
+private data class PickerTarget(
+    val initial: Int,
+    val otherColor: Int,
+    val isBackground: Boolean,
+    val onPicked: (Int) -> Unit
+)
 
-        binding.buttonTextInput.setText(
+@Composable
+private fun AppearanceScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences(QuickSendPrefs.FILE, Context.MODE_PRIVATE)
+    }
+
+    var buttonText by remember {
+        mutableStateOf(
             prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT)
+                ?: QuickSendPrefs.BUTTON_TEXT_DEFAULT
         )
-        binding.buttonTextInput.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val text = s?.toString().orEmpty().ifBlank { QuickSendPrefs.BUTTON_TEXT_DEFAULT }
-                prefs.edit().putString(QuickSendPrefs.BUTTON_TEXT, text).apply()
-                refreshAllPreviews()
+    }
+    var bgLight by remember { mutableIntStateOf(prefs.getInt(QuickSendPrefs.OVERLAY_BG_COLOR, QuickSendPrefs.DEFAULT_BG_COLOR)) }
+    var textLight by remember { mutableIntStateOf(prefs.getInt(QuickSendPrefs.OVERLAY_TEXT_COLOR, QuickSendPrefs.DEFAULT_TEXT_COLOR)) }
+    var bgDark by remember { mutableIntStateOf(prefs.getInt(QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, QuickSendPrefs.DEFAULT_BG_COLOR)) }
+    var textDark by remember { mutableIntStateOf(prefs.getInt(QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, QuickSendPrefs.DEFAULT_TEXT_COLOR)) }
+
+    var picker by remember { mutableStateOf<PickerTarget?>(null) }
+    var presetsLight by remember { mutableStateOf(false to false) } // (show, isLight)
+
+    val displayText = buttonText.ifBlank { QuickSendPrefs.BUTTON_TEXT_DEFAULT }
+
+    Scaffold(
+        topBar = {
+            QuickSendTopBar(
+                title = stringResource(R.string.btn_appearance),
+                onBack = onBack
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            SectionHeader(stringResource(R.string.overlay_button_text))
+            OutlinedTextField(
+                value = buttonText,
+                onValueChange = { v ->
+                    val limited = v.take(4)
+                    buttonText = limited
+                    prefs.edit()
+                        .putString(QuickSendPrefs.BUTTON_TEXT, limited.ifBlank { QuickSendPrefs.BUTTON_TEXT_DEFAULT })
+                        .apply()
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            SectionHeader(stringResource(R.string.btn_light_mode))
+            ModeBlock(
+                previewText = displayText,
+                bgColor = bgLight,
+                textColor = textLight,
+                presetsLabel = stringResource(R.string.btn_preset_light_button),
+                onBgClick = {
+                    picker = PickerTarget(bgLight, textLight, isBackground = true) { c ->
+                        bgLight = c
+                        prefs.edit().putInt(QuickSendPrefs.OVERLAY_BG_COLOR, c).apply()
+                    }
+                },
+                onTextClick = {
+                    picker = PickerTarget(textLight, bgLight, isBackground = false) { c ->
+                        textLight = c
+                        prefs.edit().putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR, c).apply()
+                    }
+                },
+                onPresets = { presetsLight = true to true }
+            )
+
+            SectionHeader(stringResource(R.string.btn_dark_mode))
+            ModeBlock(
+                previewText = displayText,
+                bgColor = bgDark,
+                textColor = textDark,
+                presetsLabel = stringResource(R.string.btn_preset_dark_button),
+                onBgClick = {
+                    picker = PickerTarget(bgDark, textDark, isBackground = true) { c ->
+                        bgDark = c
+                        prefs.edit().putInt(QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, c).apply()
+                    }
+                },
+                onTextClick = {
+                    picker = PickerTarget(textDark, bgDark, isBackground = false) { c ->
+                        textDark = c
+                        prefs.edit().putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, c).apply()
+                    }
+                },
+                onPresets = { presetsLight = true to false }
+            )
+
+            OutlinedButton(
+                onClick = {
+                    prefs.edit()
+                        .remove(QuickSendPrefs.OVERLAY_GRAVITY)
+                        .remove(QuickSendPrefs.OVERLAY_X)
+                        .remove(QuickSendPrefs.OVERLAY_Y)
+                        .apply()
+                    Toast.makeText(context, R.string.reset_overlay_done, Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 20.dp)
+            ) { Text(stringResource(R.string.reset_overlay_position)) }
+        }
+    }
+
+    picker?.let { target ->
+        ColorPickerDialog(
+            initial = target.initial,
+            buttonText = displayText,
+            otherColor = target.otherColor,
+            isEditingBackground = target.isBackground,
+            onDismiss = { picker = null },
+            onPicked = { c ->
+                target.onPicked(c)
+                picker = null
             }
-        })
-
-        setupColorChip(
-            binding.chipBgLight, QuickSendPrefs.OVERLAY_BG_COLOR, QuickSendPrefs.DEFAULT_BG_COLOR,
-            isEditingBackground = true, otherKey = QuickSendPrefs.OVERLAY_TEXT_COLOR, otherDefault = QuickSendPrefs.DEFAULT_TEXT_COLOR,
-            onUpdate = { refreshPreviewLight() }
         )
-        setupColorChip(
-            binding.chipBgDark, QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, QuickSendPrefs.DEFAULT_BG_COLOR,
-            isEditingBackground = true, otherKey = QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, otherDefault = QuickSendPrefs.DEFAULT_TEXT_COLOR,
-            onUpdate = { refreshPreviewDark() }
-        )
-        setupColorChip(
-            binding.chipTextLight, QuickSendPrefs.OVERLAY_TEXT_COLOR, QuickSendPrefs.DEFAULT_TEXT_COLOR,
-            isEditingBackground = false, otherKey = QuickSendPrefs.OVERLAY_BG_COLOR, otherDefault = QuickSendPrefs.DEFAULT_BG_COLOR,
-            onUpdate = { refreshPreviewLight() }
-        )
-        setupColorChip(
-            binding.chipTextDark, QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, QuickSendPrefs.DEFAULT_TEXT_COLOR,
-            isEditingBackground = false, otherKey = QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, otherDefault = QuickSendPrefs.DEFAULT_BG_COLOR,
-            onUpdate = { refreshPreviewDark() }
-        )
-
-        binding.presetsLightButton.setOnClickListener { showPresetsDialog(isLight = true) }
-        binding.presetsDarkButton.setOnClickListener { showPresetsDialog(isLight = false) }
-
-        binding.resetPositionButton.setOnClickListener {
-            prefs.edit()
-                .remove(QuickSendPrefs.OVERLAY_GRAVITY)
-                .remove(QuickSendPrefs.OVERLAY_X)
-                .remove(QuickSendPrefs.OVERLAY_Y)
-                .apply()
-            android.widget.Toast.makeText(this, R.string.reset_overlay_done, android.widget.Toast.LENGTH_SHORT).show()
-        }
-
-        refreshPreviewLight()
-        refreshPreviewDark()
     }
 
-    private fun setupColorChip(
-        container: View,
-        key: String,
-        defaultColor: Int,
-        isEditingBackground: Boolean,
-        otherKey: String,
-        otherDefault: Int,
-        onUpdate: () -> Unit
-    ) {
-        refreshColorChip(container, prefs.getInt(key, defaultColor))
-        container.setOnClickListener {
-            val cur = prefs.getInt(key, defaultColor)
-            val other = prefs.getInt(otherKey, otherDefault)
-            val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
-            ColorPickerDialog(
-                this, cur,
-                otherColor = other,
-                isEditingBackground = isEditingBackground,
-                buttonText = btnText
-            ) { newColor ->
-                prefs.edit().putInt(key, newColor).apply()
-                refreshColorChip(container, newColor)
-                onUpdate()
-            }.show()
-        }
-    }
-
-    private fun refreshColorChip(view: View, color: Int) {
-        view.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(color)
-            setStroke(2, OverlayButtonRenderer.chipBorderColor(color))
-        }
-    }
-
-    private fun refreshAllPreviews() {
-        refreshPreviewLight()
-        refreshPreviewDark()
-    }
-
-    private fun refreshPreviewLight() {
-        val bg = prefs.getInt(QuickSendPrefs.OVERLAY_BG_COLOR, QuickSendPrefs.DEFAULT_BG_COLOR)
-        val text = prefs.getInt(QuickSendPrefs.OVERLAY_TEXT_COLOR, QuickSendPrefs.DEFAULT_TEXT_COLOR)
-        setPreview(binding.btnPreviewLight, bg, text)
-    }
-
-    private fun refreshPreviewDark() {
-        val bg = prefs.getInt(QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, QuickSendPrefs.DEFAULT_BG_COLOR)
-        val text = prefs.getInt(QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, QuickSendPrefs.DEFAULT_TEXT_COLOR)
-        setPreview(binding.btnPreviewDark, bg, text)
-    }
-
-    private fun setPreview(container: ViewGroup, bgColor: Int, textColor: Int) {
-        val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
-        container.removeAllViews()
-        val btn = OverlayButtonRenderer.createPreviewButton(this, bgColor, textColor, btnText)
-        val wrapped = OverlayButtonRenderer.wrapWithCheckerboard(this, btn, frameSizeDp = 80)
-        container.addView(wrapped)
-    }
-
-    private fun showPresetsDialog(isLight: Boolean) {
-        val bgKey = if (isLight) QuickSendPrefs.OVERLAY_BG_COLOR else QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT
-        val textKey = if (isLight) QuickSendPrefs.OVERLAY_TEXT_COLOR else QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT
-        val chipBgView = if (isLight) binding.chipBgLight else binding.chipBgDark
-        val chipTextView = if (isLight) binding.chipTextLight else binding.chipTextDark
-
-        val currentBg = prefs.getInt(bgKey, QuickSendPrefs.DEFAULT_BG_COLOR)
-        val btnText = prefs.getString(QuickSendPrefs.BUTTON_TEXT, QuickSendPrefs.BUTTON_TEXT_DEFAULT) ?: "发"
-        val density = resources.displayMetrics.density
-
-        val root = android.widget.ScrollView(this).apply {
-            setPadding((16 * density).toInt(), (12 * density).toInt(),
-                (16 * density).toInt(), (8 * density).toInt())
-        }
-        val gridContainer = android.widget.GridLayout(this).apply { columnCount = 5 }
-        root.addView(gridContainer)
-
-        val chipSize = (48 * density).toInt()
-        val margin = (6 * density).toInt()
-        val selectedBorder = (3 * density).toInt()
-
-        var selectedChipView: android.widget.FrameLayout? = null
-
-        ColorPickerDialog.PRESETS.forEachIndexed { _, pair ->
-            val (_, bgColor) = pair
-            val textColor = ColorPickerDialog.contrastTextColor(bgColor)
-            val isSelected = bgColor == currentBg
-
-            val chip = android.widget.FrameLayout(this).apply {
-                val lp = android.widget.GridLayout.LayoutParams().apply {
-                    width = chipSize
-                    height = chipSize
-                    setMargins(margin, margin, margin, margin)
+    val (showPresets, presetsIsLight) = presetsLight
+    if (showPresets) {
+        PresetsDialog(
+            isLight = presetsIsLight,
+            currentBg = if (presetsIsLight) bgLight else bgDark,
+            onPick = { color ->
+                val txt = contrastTextColor(color)
+                if (presetsIsLight) {
+                    bgLight = color
+                    textLight = txt
+                    prefs.edit()
+                        .putInt(QuickSendPrefs.OVERLAY_BG_COLOR, color)
+                        .putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR, txt)
+                        .apply()
+                } else {
+                    bgDark = color
+                    textDark = txt
+                    prefs.edit()
+                        .putInt(QuickSendPrefs.OVERLAY_BG_COLOR_NIGHT, color)
+                        .putInt(QuickSendPrefs.OVERLAY_TEXT_COLOR_NIGHT, txt)
+                        .apply()
                 }
-                layoutParams = lp
-            }
-
-            val bg = View(this).apply {
-                layoutParams = ViewGroup.LayoutParams(chipSize, chipSize)
-            }
-
-            val bgDrawable = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(bgColor)
-            }
-            if (isSelected) {
-                val accentColor = resources.getColor(R.color.qs_accent, theme)
-                bgDrawable.setStroke(selectedBorder, accentColor)
-                selectedChipView = chip
-            }
-            bg.background = bgDrawable
-            chip.addView(bg)
-
-            val label = TextView(this).apply {
-                text = btnText
-                setTextColor(textColor)
-                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
-                gravity = Gravity.CENTER
-                layoutParams = ViewGroup.LayoutParams(chipSize, chipSize)
-            }
-            chip.addView(label)
-
-            chip.setOnClickListener {
-                prefs.edit()
-                    .putInt(bgKey, bgColor)
-                    .putInt(textKey, textColor)
-                    .apply()
-                if (isLight) refreshPreviewLight() else refreshPreviewDark()
-                refreshColorChip(chipBgView, bgColor)
-                refreshColorChip(chipTextView, textColor)
-
-                selectedChipView?.let { prev ->
-                    (prev.getChildAt(0)?.background as? GradientDrawable)?.setStroke(0, 0)
-                }
-                val accentColor = resources.getColor(R.color.qs_accent, theme)
-                (bg.background as GradientDrawable).apply { setStroke(selectedBorder, accentColor) }
-                selectedChipView = chip
-            }
-
-            gridContainer.addView(chip)
-        }
-
-        AlertDialog.Builder(this)
-            .setView(root)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
+            },
+            onDismiss = { presetsLight = false to false }
+        )
     }
+}
+
+@Composable
+private fun ModeBlock(
+    previewText: String,
+    bgColor: Int,
+    textColor: Int,
+    presetsLabel: String,
+    onBgClick: () -> Unit,
+    onTextClick: () -> Unit,
+    onPresets: () -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        PreviewButton(previewText, bgColor, textColor)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.padding(start = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.btn_bg_color),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                ColorChip(color = bgColor, onClick = onBgClick)
+            }
+            Spacer(Modifier.padding(vertical = 4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.btn_text_color),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                ColorChip(color = textColor, onClick = onTextClick)
+            }
+            TextButton(onClick = onPresets) { Text(presetsLabel) }
+        }
+    }
+}
+
+@Composable
+private fun PresetsDialog(
+    isLight: Boolean,
+    currentBg: Int,
+    onPick: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(if (isLight) R.string.btn_preset_light_button else R.string.btn_preset_dark_button))
+        },
+        text = {
+            Column {
+                COLOR_PRESETS.chunked(5).forEach { rowItems ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        rowItems.forEach { (_, color) ->
+                            ColorChip(
+                                color = color,
+                                sizeDp = 40.dp,
+                                onClick = {
+                                    onPick(color)
+                                    onDismiss()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.confirm)) }
+        }
+    )
 }

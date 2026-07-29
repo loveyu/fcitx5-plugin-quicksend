@@ -10,7 +10,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.content.ContextCompat
-import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.ui.QuickSendTheme
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.theme.QuickSendTheme
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.ui.RemoteAsrSettingsScreen
 
 /**

@@ -46,13 +46,15 @@ CI（`.github/workflows/build.yml`）的 `Replace mirror sources` 步骤做这�
 
 ## 版本号
 
-优先级（高→低）：环境变量 > 文件 > 兜底。
+**版本号不在代码里维护，发布时直接由 git tag 决定。** 仓库不再有 `version.properties`。
 
-- 环境变量：`PLUGIN_VERSION`（versionName）、`PLUGIN_VERSION_CODE`（versionCode）。
-- 文件：`version.properties`（入库，`versionName` / `versionCode`，如 `0.8.17` / `1000031`）可被 gitignore 的 `version.local.properties` 覆盖。
-- 兜底：`0.1.0` / `1000000`。
+- `versionName` = 最近的 git tag（去掉前缀 `v`），即 `git describe --tags --abbrev=0`，如 tag `v0.9.0` → `0.9.0`；无 tag 时兜底 `0.0.0-dev`。
+- `versionCode` = 由 tag 的语义化版本换算：`9_000_000 + major*100_000 + minor*1_000 + patch`（基址 9_000_000 保证单调且高于历史手工码 1_000_0xx）。如 `0.9.0` → `9009000`、`0.8.18` → `9008018`。
+- 环境变量覆盖（CI 用）：`PLUGIN_VERSION`（versionName）、`PLUGIN_VERSION_CODE`（versionCode）优先级最高。
+- 解析失败兜底：`1_000_000 + 提交数`。
 
-CI release 用 git tag 名作 `PLUGIN_VERSION`（如 tag `v0.8.17` → versionName `v0.8.17`），versionCode 取自 `version.properties`。
+实现见 `build.gradle.kts` 顶部 `gitTagName()` / `tagToVersionCode()` 等。发版流程：打 tag（如 `git tag v0.9.0 && git push origin v0.9.0`）→ CI 在该 tag 上构建，versionName/versionCode 即由 tag 决定，无需手动改任何文件。
+
 
 ## CI（`.github/workflows/build.yml`）
 
