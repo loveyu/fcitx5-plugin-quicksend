@@ -30,8 +30,11 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,6 +42,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.common.ipc.IInputWindowStateListener
 import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
+import org.fcitx.fcitx5.android.plugin.quicksend.AppLog
 import org.fcitx.fcitx5.android.plugin.quicksend.BuildConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
@@ -50,7 +54,16 @@ import java.io.File
 
 class VoiceOverlayService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val crashHandler = CoroutineExceptionHandler { _, t ->
+        // 任何协程未捕获异常（网络/识别/回退等）在此捕获：记日志 + 主线程 Toast，
+        // 避免进程崩溃导致整个语音 UI 挂掉；用户可再次点麦克风重试。
+        AppLog.e(TAG, "uncaught coroutine exception", t)
+        mainHandler.post {
+            Toast.makeText(this, getString(R.string.voice_crash_toast), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + crashHandler)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val fcitxAppId get() = BuildConfig.FCITX_APP_ID
 
@@ -183,17 +196,37 @@ class VoiceOverlayService : Service() {
         val dir = File(getExternalFilesDir(null) ?: filesDir, VoiceModelManager.MODEL_DIR_NAME)
         val recConfig = RecognitionConfig(
             decodingMethod = prefs.getString(QuickSendPrefs.VOICE_DECODING_METHOD, RecognitionConfig.DEFAULT_DECODING_METHOD) ?: RecognitionConfig.DEFAULT_DECODING_METHOD,
-            maxActivePaths = prefs.getInt(QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS, RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS),
-            blankPenalty = prefs.getFloat(QuickSendPrefs.VOICE_BLANK_PENALTY, RecognitionConfig.DEFAULT_BLANK_PENALTY),
-            endpointSilence = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_SILENCE, RecognitionConfig.DEFAULT_ENDPOINT_SILENCE),
-            endpointMaxUtterance = prefs.getFloat(QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER, RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE),
-            numThreads = prefs.getInt(QuickSendPrefs.VOICE_NUM_THREADS, RecognitionConfig.DEFAULT_NUM_THREADS),
+            maxActivePaths = readIntPref(prefs, QuickSendPrefs.VOICE_MAX_ACTIVE_PATHS, RecognitionConfig.DEFAULT_MAX_ACTIVE_PATHS),
+            blankPenalty = readFloatPref(prefs, QuickSendPrefs.VOICE_BLANK_PENALTY, RecognitionConfig.DEFAULT_BLANK_PENALTY),
+            endpointSilence = readFloatPref(prefs, QuickSendPrefs.VOICE_ENDPOINT_SILENCE, RecognitionConfig.DEFAULT_ENDPOINT_SILENCE),
+            endpointMaxUtterance = readFloatPref(prefs, QuickSendPrefs.VOICE_ENDPOINT_MAX_UTTER, RecognitionConfig.DEFAULT_ENDPOINT_MAX_UTTERANCE),
+            numThreads = readIntPref(prefs, QuickSendPrefs.VOICE_NUM_THREADS, RecognitionConfig.DEFAULT_NUM_THREADS),
             provider = prefs.getString(QuickSendPrefs.VOICE_PROVIDER, RecognitionConfig.DEFAULT_PROVIDER) ?: RecognitionConfig.DEFAULT_PROVIDER
         )
         val names = SherpaModelNames()
         val rec = SherpaModelHolder.getOrLoad(dir, names, recConfig)
         return SherpaRecognizer(rec)
     }
+
+    // 设置页识别参数经编辑框以「字符串」写入 SharedPreferences，但此处需要强类型值。
+    // 直接 getInt/getFloat 在值实际为 String 时会抛 ClassCastException（远端失败回退本地时崩溃），
+    // 这里按存储类型兼容读取，解析失败回退默认值。
+    private fun readIntPref(prefs: SharedPreferences, key: String, default: Int): Int =
+        when (val v = prefs.all[key]) {
+            null -> default
+            is Int -> v
+            is Number -> v.toInt()
+            is String -> v.toIntOrNull() ?: default
+            else -> default
+        }
+
+    private fun readFloatPref(prefs: SharedPreferences, key: String, default: Float): Float =
+        when (val v = prefs.all[key]) {
+            null -> default
+            is Number -> v.toFloat()
+            is String -> v.toFloatOrNull() ?: default
+            else -> default
+        }
 
     private fun createAndStartController(factory: suspend () -> SpeechRecognizer) {
         val ctrl = VoiceController(
@@ -250,8 +283,22 @@ class VoiceOverlayService : Service() {
                     controller = null
                     currentPrefs?.let { p ->
                         scope.launch(Dispatchers.IO) {
-                            val rec = makeLocalRecognizer(p)
-                            runOnUiThread { createAndStartController { rec } }
+                            try {
+                                val rec = makeLocalRecognizer(p)
+                                runOnUiThread { createAndStartController { rec } }
+                            } catch (cancellation: CancellationException) {
+                                throw cancellation
+                            } catch (t: Throwable) {
+                                AppLog.e(TAG, "fallback to local model failed", t)
+                                mainHandler.post {
+                                    Toast.makeText(
+                                        this@VoiceOverlayService,
+                                        getString(R.string.voice_fallback_failed),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    closeAndStop()
+                                }
+                            }
                         }
                     }
                     return
@@ -263,32 +310,32 @@ class VoiceOverlayService : Service() {
     }
 
     private fun buildStatusText(text: String): CharSequence {
+        // 仅给模式前缀 [L]/[N]/[NL] 上色；状态正文（"正在聆听"等）保持 TextView 默认
+        // qs_text_secondary 不被染色。前缀用 qs_accent（蓝，随日夜切换、不过亮、与整体协调）；
+        // 回退模式下 N 用 qs_danger（红，提示远端失败）、L 用 qs_accent。
+        val accent = ContextCompat.getColor(this, R.color.qs_accent)
+        val danger = ContextCompat.getColor(this, R.color.qs_danger)
         return when (voiceMode) {
-            VoiceMode.LOCAL -> SpannableStringBuilder().apply {
-                append("[L] ")
+            VoiceMode.LOCAL -> prefixed("[L] ", text, accent)
+            VoiceMode.REMOTE -> prefixed("[N] ", text, accent)
+            VoiceMode.REMOTE_FALLBACK_LOCAL -> SpannableStringBuilder().apply {
+                append("[")
+                append("N")
+                setSpan(ForegroundColorSpan(danger), 1, 2, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                append("L")
+                setSpan(ForegroundColorSpan(accent), 2, 3, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+                append("] ")
                 append(text)
-                setSpan(ForegroundColorSpan(Color.GREEN), 0, length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            VoiceMode.REMOTE -> SpannableStringBuilder().apply {
-                append("[N] ")
-                append(text)
-                setSpan(ForegroundColorSpan(Color.GREEN), 0, length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            VoiceMode.REMOTE_FALLBACK_LOCAL -> {
-                val green = Color.GREEN
-                val red = Color.RED
-                SpannableStringBuilder().apply {
-                    val bracketStart = append("[")
-                    setSpan(ForegroundColorSpan(green), 0, 1, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    val nIdx = append("N")
-                    setSpan(ForegroundColorSpan(red), 1, 2, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    append("L] ")
-                    append(text)
-                    setSpan(ForegroundColorSpan(green), 2, length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
             }
         }
     }
+
+    private fun prefixed(prefix: String, text: String, color: Int): SpannableStringBuilder =
+        SpannableStringBuilder().apply {
+            append(prefix)
+            setSpan(ForegroundColorSpan(color), 0, prefix.length, SpannableStringBuilder.SPAN_EXCLUSIVE_EXCLUSIVE)
+            append(text)
+        }
 
     private fun showOverlay() {
         if (overlayView != null) return
