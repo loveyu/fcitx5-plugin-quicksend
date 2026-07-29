@@ -4,6 +4,7 @@
  */
 package org.fcitx.fcitx5.android.plugin.quicksend.voice
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,30 +62,37 @@ class VoiceController(
         partialBackspaceOffset = 0
         rawPartialText = ""
         scope.launch(Dispatchers.IO) {
-            runCatching { recognizerFactory() }
-                .onSuccess { rec ->
-                    VoiceLog.i(TAG, "recognizer created")
-                    recognizer = rec
-                    collectJob?.cancel()
-                    collectJob = scope.launch {
-                        rec.events.collect { handle(it) }
-                    }
-                    runCatching { rec.start() }
-                        .onSuccess {
-                            VoiceLog.i(TAG, "recognizer started")
-                            if (_state.value !is VoiceUiState.Error && _state.value !is VoiceUiState.Paused) {
-                                _state.value = VoiceUiState.Listening
-                            }
-                        }
-                        .onFailure {
-                            VoiceLog.e(TAG, "recognizer start failed", it)
-                            _state.value = VoiceUiState.Error(it.message ?: "启动识别失败")
-                        }
-                }
-                .onFailure {
-                    VoiceLog.e(TAG, "recognizer creation failed", it)
-                    _state.value = VoiceUiState.Error(it.message ?: "创建识别器失败")
-                }
+            // 注意：recognizerFactory()/start() 都是 suspend；不能用 runCatching 包裹——
+            // 它会吞掉 CancellationException，导致 destroy() 取消作用域时误报
+            // "recognizer creation failed" / "recognizer start failed"。这里显式重抛取消。
+            val rec = try {
+                recognizerFactory()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                VoiceLog.e(TAG, "recognizer creation failed", t)
+                _state.value = VoiceUiState.Error(t.message ?: "创建识别器失败")
+                return@launch
+            }
+            VoiceLog.i(TAG, "recognizer created")
+            recognizer = rec
+            collectJob?.cancel()
+            collectJob = scope.launch {
+                rec.events.collect { handle(it) }
+            }
+            try {
+                rec.start()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                VoiceLog.e(TAG, "recognizer start failed", t)
+                _state.value = VoiceUiState.Error(t.message ?: "启动识别失败")
+                return@launch
+            }
+            VoiceLog.i(TAG, "recognizer started")
+            if (_state.value !is VoiceUiState.Error && _state.value !is VoiceUiState.Paused) {
+                _state.value = VoiceUiState.Listening
+            }
         }
     }
 
@@ -198,8 +206,15 @@ class VoiceController(
     fun finish() {
         VoiceLog.i(TAG, "finish requested")
         scope.launch {
-            runCatching { recognizer?.stop() }.onFailure {
-                VoiceLog.w(TAG, "stop failed, ending session", it)
+            // stop() 是 suspend；正常运行时，final 结果会通过 events 回调经 handle(Final)
+            // 触发 endSession()。这里只在 stop() 抛出「真实异常」时兜底结束会话；
+            // 若是作用域被取消（destroy()），直接重抛，避免误报 "stop failed" 与二次 endSession。
+            try {
+                recognizer?.stop()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                VoiceLog.w(TAG, "stop failed, ending session", t)
                 endSession()
             }
         }
@@ -208,7 +223,13 @@ class VoiceController(
     fun close() {
         VoiceLog.i(TAG, "close requested")
         scope.launch {
-            runCatching { recognizer?.cancel() }
+            try {
+                recognizer?.cancel()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (t: Throwable) {
+                VoiceLog.w(TAG, "cancel recognizer failed", t)
+            }
             withContext(Dispatchers.IO) {
                 val r = remote()
                 if (r != null) runCatching { r.setComposingText("") }

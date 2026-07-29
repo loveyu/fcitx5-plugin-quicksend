@@ -77,4 +77,9 @@ object QuickSendPrefs {
     const val VOICE_REMOTE_ENABLED = "voice_remote_enabled"
     const val VOICE_REMOTE_URL = "voice_remote_url"
     const val VOICE_REMOTE_TOKEN = "voice_remote_token"
+
+    // ===== 调试日志 =====
+
+    /** 是否开启 DEBUG 级日志（同时落盘 + logcat）。默认关闭，仅记录 WARN 及以上。 */
+    const val LOG_DEBUG_ENABLED = "log_debug_enabled"
 }

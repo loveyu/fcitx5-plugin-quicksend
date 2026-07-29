@@ -116,13 +116,24 @@
     <string name="voice_remote_settings_title">远端语音识别</string>
     <string name="voice_remote_description">后续将接入更多语音识别服务，此处为通用 WebSocket 协议设置。</string>
 
-    <!-- 调试日志 -->
-    <string name="voice_log_section">调试日志</string>
-    <string name="voice_log_path_label">日志文件路径</string>
-    <string name="voice_log_hint">语音输入调试阶段会写入详细日志到上面的文件，可复制或分享以便排查问题。</string>
-    <string name="voice_share_log">分享日志</string>
-    <string name="voice_log_share_title">分享语音日志</string>
-    <string name="voice_log_unavailable">日志文件暂不可用</string>
+    <!-- 调试日志设置页（独立） -->
+    <string name="log_settings_entry">调试日志</string>
+    <string name="log_settings_title">调试日志</string>
+    <string name="log_debug_switch">启用调试日志 (DEBUG)</string>
+    <string name="log_debug_summary">默认仅记录 WARN 及以上（同时写入 logcat）。开启后追加 INFO/DEBUG，便于排查问题。</string>
+    <string name="log_current_level">当前级别：%1$s</string>
+    <string name="log_level_warn">WARN（默认）</string>
+    <string name="log_level_debug">DEBUG</string>
+    <string name="log_path_label">日志文件</string>
+    <string name="log_size_label">大小：%1$s</string>
+    <string name="log_clear">清空日志</string>
+    <string name="log_clear_confirm">确定清空所有日志？</string>
+    <string name="log_share">分享日志</string>
+    <string name="log_share_title">分享日志</string>
+    <string name="log_unavailable">日志文件暂不可用</string>
+    <string name="log_cleared_toast">已清空日志</string>
+    <string name="log_preview_section">日志预览（末尾 %1$d 行）</string>
+    <string name="log_preview_empty">暂无日志</string>
 
     <!-- 颜色选择 -->
     <string name="color_picker_title">选择颜色</string>

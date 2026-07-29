@@ -17,17 +17,16 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import org.fcitx.fcitx5.android.plugin.quicksend.BuildConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.databinding.ActivityVoiceSettingsBinding
+import org.fcitx.fcitx5.android.plugin.quicksend.log.LogSettingsActivity
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.ProxyConfig
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
 
@@ -67,8 +66,9 @@ class VoiceSettingsActivity : Activity() {
             startActivity(Intent(this, RemoteVoiceSettingsActivity::class.java))
         }
 
-        binding.logPath.text = VoiceLog.path(this)
-        binding.shareLogButton.setOnClickListener { shareLog() }
+        binding.logSettingsButton.setOnClickListener {
+            startActivity(Intent(this, LogSettingsActivity::class.java))
+        }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
@@ -287,22 +287,6 @@ class VoiceSettingsActivity : Activity() {
         binding.namesTokens.setText(SherpaModelNames.DEFAULT_TOKENS)
         loadParamPrefs()
         Toast.makeText(this, "已恢复默认配置", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun shareLog() {
-        val file = VoiceLog.file(this)
-        if (file == null) {
-            Toast.makeText(this, R.string.voice_log_unavailable, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val uri = FileProvider.getUriForFile(this, "${BuildConfig.APPLICATION_ID}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, getString(R.string.voice_log_section))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        startActivity(Intent.createChooser(intent, getString(R.string.voice_log_share_title)))
     }
 
     private fun updateState(state: DownloadState) {

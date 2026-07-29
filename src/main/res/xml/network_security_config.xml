@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 允许明文流量：
+     模型下载地址与远端 ASR（ws://）均为用户自配置，常见为内网 HTTP / 明文 WebSocket
+     （如 ws://10.x.x.x:port）。默认 Android 9+ 禁止明文，这里显式放行，否则
+     RemoteSpeechRecognizer 会因 "CLEARTEXT communication not permitted" 失败。 -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
