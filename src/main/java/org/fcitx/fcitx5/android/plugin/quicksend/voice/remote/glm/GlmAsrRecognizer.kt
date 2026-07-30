@@ -9,10 +9,17 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -41,7 +48,10 @@ import java.util.concurrent.TimeUnit
  * 协议：HTTP POST multipart/form-data 上传完整 WAV → `stream=true` 时服务端通过 SSE 下发
  * `transcript.text.delta`（增量）/ `transcript.text.done`（完成）/ `[DONE]`（流结束）。
  *
- * 非 WebSocket 实时流，不适合逐帧推流。录音→停止→上传→解析 SSE，延迟取决于音频长度和网络。
+ * 非 WebSocket 实时流，不适合逐帧推流。为提高用户体验，录音期间做周期性「预览上传」：
+ * - [start] 时启动录音线程 + 预视协程（每隔 [PREVIEW_INTERVAL_MS] 把当前已累积音频快照
+ *   上传并解析 SSE delta，实时下发 Partial 到浮层）；
+ * - [stop] 时取消预视、做最终上传（[finalMode]=true），得到 Final 后结束会话。
  */
 class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
 
@@ -63,6 +73,9 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
     private val sampleRate = 16000
     private val audioBuffer = ByteArrayOutputStream()
 
+    private val previewScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var previewJob: Job? = null
+
     override suspend fun start() {
         if (started) return
         VoiceLog.i(TAG, "start: recording")
@@ -72,6 +85,23 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
         val t = Thread({ recordingLoop() }, "glm-asr-rec").apply { isDaemon = true }
         nativeThread = t
         t.start()
+
+        previewJob = previewScope.launch {
+            delay(PREVIEW_INITIAL_DELAY_MS)
+            while (isActive && running) {
+                val pcm: ByteArray = synchronized(audioBuffer) { audioBuffer.toByteArray() }
+                if (pcm.size >= MIN_PCM_BYTES_FOR_PREVIEW) {
+                    try {
+                        withContext(Dispatchers.IO) { uploadAndParse(pcm, finalMode = false) }
+                    } catch (_: CancellationException) {
+                        throw CancellationException("preview cancelled")
+                    } catch (e: Throwable) {
+                        VoiceLog.w(TAG, "preview upload failed", e)
+                    }
+                }
+                delay(PREVIEW_INTERVAL_MS)
+            }
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -92,7 +122,6 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
                 if (n <= 0) continue
                 val pcmBytes = shortArrayToBytes(buf, n)
                 synchronized(audioBuffer) { audioBuffer.write(pcmBytes) }
-                // 30s 硬上限
                 if (audioBuffer.size() >= MAX_PCM_BYTES) {
                     VoiceLog.w(TAG, "audio buffer full (${audioBuffer.size()} bytes), stopping")
                     running = false
@@ -112,6 +141,8 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
         if (!started) return
         VoiceLog.i(TAG, "stop: uploading ${audioBuffer.size()} bytes")
         running = false
+        previewJob?.cancel()
+        previewJob = null
         awaitNativeThread()
         nativeThread = null
 
@@ -122,7 +153,7 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
             return
         }
         try {
-            withContext(Dispatchers.IO) { uploadAndParse(pcmBytes) }
+            withContext(Dispatchers.IO) { uploadAndParse(pcmBytes, finalMode = true) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -137,6 +168,8 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
         if (!started) return
         VoiceLog.i(TAG, "cancel")
         running = false
+        previewJob?.cancel()
+        previewJob = null
         awaitNativeThread()
         nativeThread = null
         started = false
@@ -145,6 +178,8 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
     override fun releaseNow() {
         VoiceLog.i(TAG, "releaseNow")
         running = false
+        previewJob?.cancel()
+        previewScope.cancel()
         nativeThread?.let { runCatching { it.join(2_000) } }
         nativeThread = null
         runCatching { eventChannel.close() }
@@ -159,11 +194,18 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
     }
 
     /**
-     * 上传 PCM 数据（封装为 WAV）→ 解析 SSE 响应 → 下发 Partial/Final 事件。
+     * 上传 PCM 数据（封装为 WAV）→ 解析 SSE 响应 → 下发事件。
+     *
+     * [finalMode]=true：点击「完成」后的最终上传，正常下发 Partial + Final。
+     * [finalMode]=false：录音期间的预视上传，仅下发 Partial（绝不发 Final），且受 [running] 闸门
+     * 保护——若 [stop] 已复位 [running]=false（例如用户提前点了完成），后续 delta 不再下发，
+     * 避免在最终结果之后平添一条过时 partial。
      */
-    private fun uploadAndParse(pcmBytes: ByteArray) {
+    private fun uploadAndParse(pcmBytes: ByteArray, finalMode: Boolean = true) {
         val wavFile = pcmToWavFile(pcmBytes)
-        eventChannel.trySend(RecognitionEvent.Partial("")) // 触发 UI 进入提交态
+        if (finalMode) {
+            eventChannel.trySend(RecognitionEvent.Partial("")) // 触发 UI 进入提交态
+        }
         try {
             val requestBody = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
@@ -203,9 +245,11 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
                             if (line.startsWith("data: ") && line.length > 6) {
                                 val data = line.substring(6)
                                 if (data == "[DONE]") {
-                                    val finalText = sb.toString()
-                                    VoiceLog.i(TAG, "sse done, final: $finalText")
-                                    eventChannel.trySend(RecognitionEvent.Final(finalText))
+                                    if (finalMode) {
+                                        val finalText = sb.toString()
+                                        VoiceLog.i(TAG, "sse done, final: $finalText")
+                                        eventChannel.trySend(RecognitionEvent.Final(finalText))
+                                    }
                                     break
                                 }
                                 try {
@@ -216,8 +260,10 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
                                         "transcript.text.delta" -> {
                                             if (delta.isNotEmpty()) {
                                                 sb.append(delta)
-                                                VoiceLog.d(TAG, "delta: $delta → partial: $sb")
-                                                eventChannel.trySend(RecognitionEvent.Partial(sb.toString()))
+                                                if (finalMode || running) {
+                                                    VoiceLog.d(TAG, "delta: $delta → partial: $sb")
+                                                    eventChannel.trySend(RecognitionEvent.Partial(sb.toString()))
+                                                }
                                             }
                                         }
                                         "transcript.text.done" -> {
@@ -226,9 +272,13 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
                                                 sb.setLength(0)
                                                 sb.append(finalInDone)
                                             }
-                                            val finalText = sb.toString()
-                                            VoiceLog.i(TAG, "done: $finalText")
-                                            eventChannel.trySend(RecognitionEvent.Final(finalText))
+                                            if (finalMode) {
+                                                val finalText = sb.toString()
+                                                VoiceLog.i(TAG, "done: $finalText")
+                                                eventChannel.trySend(RecognitionEvent.Final(finalText))
+                                            } else if (running) {
+                                                eventChannel.trySend(RecognitionEvent.Partial(sb.toString()))
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) {
@@ -308,5 +358,11 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
         private const val TAG = "GlmASR"
         /** 最大 PCM 字节数 = 30s × 16000Hz × 2 bytes。 */
         private const val MAX_PCM_BYTES = 30 * 16000 * 2
+        /** 首次预视上传延后，给录音攒够一段可识别音频（1.5s）。 */
+        private const val PREVIEW_INITIAL_DELAY_MS = 1500L
+        /** 后续预视上传间隔（2s）。 */
+        private const val PREVIEW_INTERVAL_MS = 2000L
+        /** 预视上传最小 PCM 字节数（1.5s × 16000Hz × 2 = 48000），不足则跳过一次。 */
+        private const val MIN_PCM_BYTES_FOR_PREVIEW = 48000
     }
 }

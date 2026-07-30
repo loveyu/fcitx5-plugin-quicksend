@@ -87,7 +87,7 @@ abstract class BaseWsStreamingRecognizer(
     /** 构造握手 Request（含鉴权/签名，由子类拼装）。 */
     protected abstract fun buildRequest(): Request
 
-    /** 握手成功（wsReady）后发送的起始帧（如 {"type":"start"}）；默认不发。 */
+    /** WebSocket 连接后立即发送的起始帧（如 {"type":"start"}），在 [wsReady] 等待前发出。 */
     protected open fun sendStart(webSocket: WebSocket) {}
 
     /** stop() 时发送的结束帧（如 {"type":"finish"}/{"type":"end"}）。 */
@@ -222,11 +222,12 @@ abstract class BaseWsStreamingRecognizer(
         val freshWs = client.newWebSocket(buildRequest(), WsHandler())
         ws = freshWs
 
+        sendStart(freshWs)
+
         if (!wsReady.await()) {
             throw IllegalStateException("WebSocket handshake failed")
         }
-        VoiceLog.i(tag, "ws ready, sending start")
-        sendStart(freshWs)
+        VoiceLog.i(tag, "ws ready")
 
         if (requiresListeningState) {
             if (!wsListening.await()) {
