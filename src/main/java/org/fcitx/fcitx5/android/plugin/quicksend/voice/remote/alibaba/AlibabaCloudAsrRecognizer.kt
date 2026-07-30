@@ -19,15 +19,26 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * 阿里云智能语音交互实时语音识别（SpeechTranscriber）。文档：
- * https://help.aliyun.com/zh/isi/developer-reference/api-reference
+ * 阿里云智能语音交互实时语音识别（SpeechTranscriber）。
  *
- * 协议：WebSocket 文本帧（header/payload/context）+ 二进制 PCM。
- * - 握手地址：`wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=<TOKEN>`
- * - 客户端先发 StartTranscription，服务端响应 TranscriptionStarted 后开始推流。
- * - 运行中持续收到 TranscriptionResultChanged（中间结果）和 SentenceEnd（稳态句）。
- * - 客户端发 StopTranscription 结束，服务端响应 TranscriptionComplete。
- * - 多句识别：按句返回 SentenceEnd 结果累积在 [appendStable]，TranscriptionComplete 时一次性提交。
+ * 官方协议文档（WebSocket API）：
+ *   https://help.aliyun.com/zh/isi/developer-reference/api-reference
+ *   https://help.aliyun.com/document_detail/324262.html
+ *
+ * 消息格式要点（截至 2026-07，以文档为准，若出问题优先查文档更新）：
+ * - `message_id`：32 位随机字符串（UUID 去横线），唯一标识当前消息。如 `"05450bf69c53413f8d88aed1ee60xxxx"`。
+ * - `task_id`：32 位随机字符串（UUID 去横线），同一会话所有消息保持一致。StartTranscription 时客户端生成，
+ *   服务端在 TranscriptionStarted 响应的 header.task_id 中回传（可能与客户端一致或独立生成），
+ *   StopTranscription 时必须传回与 TranscriptionStarted 匹配的 task_id。
+ * - `appkey`：**在 header 中**，不在 payload 中。
+ * - 请求体结构：`{"header": {...}, "payload": {...}}`，无需 `context` 字段。
+ *
+ * 流程：
+ * - `wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1?token=<TOKEN>`
+ * - 客户端发 StartTranscription → 服务端回 TranscriptionStarted（status=20000000）→ 开始推流
+ * - 运行中收到 TranscriptionResultChanged（中间）和 SentenceEnd（稳态句，多句累积）
+ * - 客户端发 StopTranscription → 服务端回 TranscriptionComplete
+ * - 多句识别：SentenceEnd 结果累积在 [appendStable]，TranscriptionComplete 时一次性 markFinal
  *
  * Token 支持两种方式（优先前者）：
  * 1. 手动填入 token 字段；
@@ -85,38 +96,39 @@ class AlibabaCloudAsrRecognizer(private val config: AlibabaCloudAsrBackend) :
     }
 
     override fun sendStart(webSocket: WebSocket) {
-        val msgId = UUID.randomUUID().toString()
+        // message_id / task_id 必须为 32 位随机字符串（UUID 去横线）
+        val msgId = UUID.randomUUID().toString().replace("-", "")
+        taskId = msgId
         val startMsg = JSONObject().apply {
             put("header", JSONObject().apply {
+                put("appkey", config.appKey)
                 put("namespace", "SpeechTranscriber")
                 put("name", "StartTranscription")
                 put("message_id", msgId)
-                put("task_id", msgId)
+                put("task_id", taskId)
             })
             put("payload", JSONObject().apply {
-                put("appkey", config.appKey)
                 put("format", "pcm")
                 put("sample_rate", config.sampleRate)
                 if (config.enableIntermediateResult) put("enable_intermediate_result", true)
                 if (config.enablePunctuationPrediction) put("enable_punctuation_prediction", true)
                 if (config.enableInverseTextNormalization) put("enable_inverse_text_normalization", true)
             })
-            put("context", JSONObject())
         }
         webSocket.send(startMsg.toString())
     }
 
     override fun sendFinish(webSocket: WebSocket) {
-        val msgId = UUID.randomUUID().toString()
+        val msgId = UUID.randomUUID().toString().replace("-", "")
         val stopMsg = JSONObject().apply {
             put("header", JSONObject().apply {
+                put("appkey", config.appKey)
                 put("namespace", "SpeechTranscriber")
                 put("name", "StopTranscription")
                 put("message_id", msgId)
                 put("task_id", taskId.ifBlank { msgId })
             })
             put("payload", JSONObject())
-            put("context", JSONObject())
         }
         webSocket.send(stopMsg.toString())
     }
