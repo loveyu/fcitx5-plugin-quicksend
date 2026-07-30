@@ -220,6 +220,53 @@ data class TencentAsrV1Backend(
 }
 
 /**
+ * 百度智能云实时语音识别（WebSocket，短语音实时转写）。
+ *
+ * 官方文档：
+ *   https://cloud.baidu.com/doc/SPEECH/s/jlbxejt2i  （WebSocket API 协议）
+ *   https://cloud.baidu.com/doc/SPEECH/s/cm8sn2bii  （鉴权认证）
+ *   https://cloud.baidu.com/doc/SPEECH/s/Zlbxew2qk  （错误码汇总）
+ *
+ * 协议要点（截至 2026-07）：
+ * - 连接地址：`wss://vop.baidu.com/realtime_asr?sn=<UUID>`，sn 仅用于日志追踪
+ * - 鉴权：appid + appkey 在 START 帧中直传，无需额外 token
+ * - 采样率固定 16000 Hz、格式固定 PCM
+ * - 音频帧：二进制，每帧 20-200ms，建议 160ms（5120 bytes），5s 无数据则断开
+ * - 结束：客户端发 FINISH 后服务端返回最终 FIN_TEXT 并关闭连接
+ * - 服务端自行关闭连接（不依赖客户端 close），onClosed 即表示全部识别完成
+ */
+@Serializable
+@SerialName("baidu-asr")
+data class BaiduAsrBackend(
+    override val id: String,
+    override val name: String,
+    override val enable: Boolean = false,
+    override val tested: Boolean = false,
+    override val proxy: String = "",
+    /** 服务地址（含 scheme，不含 sn）。默认 [DEFAULT_URL]。 */
+    val url: String = DEFAULT_URL,
+    /** 百度控制台应用 AppID（必填）。 */
+    val appId: String = "",
+    /** 百度控制台应用 API Key（必填）。 */
+    val appKey: String = "",
+    /** 识别模型 PID。
+     *  1537=中文普通话（弱标点）、15372=中文普通话（加强标点*）、
+     *  15376=中文多方言、1737=英语、17372=英语（加强标点）。
+     *  默认 15372。 */
+    val devPid: Int = DEFAULT_DEV_PID,
+) : RemoteBackend {
+    override fun withTested(tested: Boolean): RemoteBackend = copy(tested = tested)
+    override fun withEnable(enable: Boolean): RemoteBackend = copy(enable = enable)
+
+    companion object {
+        /** 百度实时语音识别默认服务地址。 */
+        const val DEFAULT_URL = "wss://vop.baidu.com/realtime_asr"
+        /** 推荐模型：中文普通话 + 加强标点（逗号、句号、问号、感叹号）。 */
+        const val DEFAULT_DEV_PID = 15372
+    }
+}
+
+/**
  * 智谱 GLM-ASR-2512 语音转文本（HTTP REST，multipart/form-data 上传 WAV）。
  * 文档：https://docs.bigmodel.cn/api-reference/%E6%A8%A1%E5%9E%8B-api/%E8%AF%AD%E9%9F%B3%E8%BD%AC%E6%96%87%E6%9C%AC
  *

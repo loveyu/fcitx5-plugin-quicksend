@@ -123,6 +123,7 @@
     <string name="remote_type_tencent_v1">tencent-asr-v1（腾讯实时语音识别 V1，通用引擎）</string>
     <string name="remote_type_tencent">tencent-asr-v2（腾讯实时语音识别 V2）</string>
     <string name="remote_type_alibaba">alibaba-asr（阿里云实时语音识别）</string>
+    <string name="remote_type_baidu">baidu-asr（百度智能云实时语音识别）</string>
     <string name="remote_type_glm">glm-asr（智谱 GLM-ASR-2512）</string>
     <string name="remote_field_name">名称</string>
     <string name="remote_field_enable">启用</string>
@@ -169,6 +170,15 @@
     <string name="alibaba_field_intermediate">返回中间结果</string>
     <string name="alibaba_field_punctuation">添加标点</string>
     <string name="alibaba_field_itn">中文数字转阿拉伯数字</string>
+
+    <!-- baidu-asr 字段 -->
+    <string name="baidu_field_url">服务地址（默认 wss://vop.baidu.com/realtime_asr）</string>
+    <string name="baidu_copy_default">复制默认地址（wss://vop.baidu.com/realtime_asr）</string>
+    <string name="baidu_default_copied">已复制默认地址，粘贴到上方输入框</string>
+    <string name="baidu_field_appid">控制台应用 AppID</string>
+    <string name="baidu_field_appkey">控制台应用 API Key</string>
+    <string name="baidu_field_devpid">识别模型 PID（15372=中文普通话加强标点）</string>
+    <string name="baidu_devpid_hint">1537=中文普通话弱标点 | 15372=中文普通话加强标点 | 1737=英语</string>
 
     <!-- glm-asr 字段 -->
     <string name="glm_field_apikey">API Key（智谱开放平台 → API Keys 页面获取）</string>

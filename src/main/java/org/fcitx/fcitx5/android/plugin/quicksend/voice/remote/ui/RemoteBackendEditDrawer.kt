@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceOverlayService
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.AlibabaCloudAsrBackend
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.BaiduAsrBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.GlmAsrBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
@@ -107,6 +108,11 @@ fun RemoteBackendEditDrawer(
     var glmApiKey by remember(backend.id) { mutableStateOf(glm?.apiKey ?: "") }
     var glmBaseUrl by remember(backend.id) { mutableStateOf(glm?.baseUrl ?: GlmAsrBackend.DEFAULT_BASE_URL) }
     var glmHotwords by remember(backend.id) { mutableStateOf(glm?.hotwords ?: "") }
+    val baidu = backend as? BaiduAsrBackend
+    var baiduUrl by remember(backend.id) { mutableStateOf(baidu?.url ?: BaiduAsrBackend.DEFAULT_URL) }
+    var baiduAppId by remember(backend.id) { mutableStateOf(baidu?.appId ?: "") }
+    var baiduAppKey by remember(backend.id) { mutableStateOf(baidu?.appKey ?: "") }
+    var baiduDevPid by remember(backend.id) { mutableStateOf((baidu?.devPid ?: BaiduAsrBackend.DEFAULT_DEV_PID).toString()) }
 
     fun buildSaved(): RemoteBackend? = when (backend) {
         is StreamingAsrServerBackend -> {
@@ -178,6 +184,17 @@ fun RemoteBackendEditDrawer(
                 apiKey = glmApiKey.trim(),
                 baseUrl = glmBaseUrl.trim().ifBlank { GlmAsrBackend.DEFAULT_BASE_URL },
                 hotwords = glmHotwords.trim(),
+            )
+        }
+        is BaiduAsrBackend -> {
+            if (baiduAppId.isBlank() || baiduAppKey.isBlank()) null
+            else backend.copy(
+                name = name.trim().ifBlank { "baidu-asr" },
+                enable = enable, proxy = proxy.trim(),
+                url = baiduUrl.trim().ifBlank { BaiduAsrBackend.DEFAULT_URL },
+                appId = baiduAppId.trim(),
+                appKey = baiduAppKey.trim(),
+                devPid = baiduDevPid.toIntOrNull() ?: BaiduAsrBackend.DEFAULT_DEV_PID,
             )
         }
     }
@@ -337,6 +354,40 @@ fun RemoteBackendEditDrawer(
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
                 }
+                is BaiduAsrBackend -> {
+                    OutlinedTextField(
+                        value = baiduUrl, onValueChange = { baiduUrl = it },
+                        label = { Text(stringResource(R.string.baidu_field_url)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(BaiduAsrBackend.DEFAULT_URL))
+                        toast(context, R.string.baidu_default_copied)
+                    }) { Text(stringResource(R.string.baidu_copy_default)) }
+                    OutlinedTextField(
+                        value = baiduAppId, onValueChange = { baiduAppId = it },
+                        label = { Text(stringResource(R.string.baidu_field_appid)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = baiduAppKey, onValueChange = { baiduAppKey = it },
+                        label = { Text(stringResource(R.string.baidu_field_appkey)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = baiduDevPid, onValueChange = { baiduDevPid = it },
+                        label = { Text(stringResource(R.string.baidu_field_devpid)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(R.string.baidu_devpid_hint),
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                    )
+                }
             }
 
             OutlinedTextField(
@@ -384,6 +435,7 @@ internal fun typeLabel(backend: RemoteBackend): String = when (backend) {
     is TencentAsrV1Backend -> "tencent-asr-v1"
     is TencentAsrV2Backend -> "tencent-asr-v2"
     is AlibabaCloudAsrBackend -> "alibaba-asr"
+    is BaiduAsrBackend -> "baidu-asr"
     is GlmAsrBackend -> "glm-asr"
 }
 

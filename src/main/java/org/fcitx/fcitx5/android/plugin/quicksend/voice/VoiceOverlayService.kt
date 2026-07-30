@@ -430,7 +430,12 @@ class VoiceOverlayService : Service() {
                 backspaceBtn?.visibility = View.VISIBLE
                 finishBtn?.visibility = View.VISIBLE
             }
-            VoiceUiState.Finishing -> st.text = buildStatusText(getString(R.string.voice_committing))
+            VoiceUiState.Finishing -> {
+                st.text = buildStatusText(getString(R.string.voice_committing))
+                pauseBtn?.visibility = View.GONE
+                backspaceBtn?.visibility = View.GONE
+                finishBtn?.visibility = View.GONE
+            }
             is VoiceUiState.Error -> {
                 // 链式策略——
                 //   链未耗尽：当前后端失败即试下一个（不论错误类型）；

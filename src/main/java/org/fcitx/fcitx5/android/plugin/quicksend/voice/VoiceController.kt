@@ -216,6 +216,7 @@ class VoiceController(
 
     fun finish() {
         VoiceLog.i(TAG, "finish requested")
+        _state.value = VoiceUiState.Finishing
         scope.launch {
             // stop() 是 suspend；正常运行时，final 结果会通过 events 回调经 handle(Final)
             // 触发 endSession()。这里只在 stop() 抛出「真实异常」时兜底结束会话；

@@ -8,12 +8,9 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -105,6 +102,13 @@ abstract class BaseWsStreamingRecognizer(
     /** 把 WS 升级失败归类为 [ErrorKind]（HTTP 码 / 服务端 JSON code）。 */
     protected abstract fun classifyFailure(t: Throwable, response: Response?): ErrorKind
 
+    /**
+     * 服务端主动关闭 WebSocket 连接的回调。默认无操作。
+     * 百度等后端在客户端发 FINISH 后由服务端自行 close，而非下发显式 "final" 消息——
+     * 子类可 override 此方法在 onClosed 时调用 [markFinal]。
+     */
+    protected open fun onServerClose(code: Int, reason: String) {}
+
     private inner class WsHandler : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             VoiceLog.i(tag, "ws opened (${response.code})")
@@ -124,6 +128,7 @@ abstract class BaseWsStreamingRecognizer(
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             VoiceLog.i(tag, "ws closed: $code $reason")
+            onServerClose(code, reason)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -292,22 +297,13 @@ abstract class BaseWsStreamingRecognizer(
         val w = ws
         if (w != null) {
             sendFinish(w)
-            // 等服务端 final 若不设上限，遇慢/失联服务端会让「完成」按钮长时间卡在提交中。
-            // 这里加超时：超时则以最近 partial 软结束，保证已识别内容落库。
-            val result: RecognitionEvent? = try {
-                withTimeout(FINAL_AWAIT_MS) { finalResult.await() }
-            } catch (e: TimeoutCancellationException) {
-                VoiceLog.w(tag, "final await timed out → soft-finalize with last partial")
-                val finalText = lastPartialText
-                lastPartialText = ""
-                RecognitionEvent.Final(finalText)
-            } catch (e: CancellationException) {
-                throw e // destroy() 取消作用域，不要吞
-            } catch (e: Throwable) {
-                VoiceLog.w(tag, "final await failed: ${e.javaClass.simpleName}", e)
-                null
+            // 不再等待服务端 final——立即以已累积的 lastPartialText 提交，
+            // 让 UI 快速关闭。服务端的 TranscriptionComplete 等收尾消息在后台处理。
+            val finalText = lastPartialText
+            lastPartialText = ""
+            if (finalText.isNotEmpty()) {
+                eventChannel.trySend(RecognitionEvent.Final(finalText))
             }
-            if (result is RecognitionEvent.Final) eventChannel.trySend(result)
             w.close(1000, "done")
         }
         started = false
@@ -379,8 +375,5 @@ abstract class BaseWsStreamingRecognizer(
         return bytes
     }
 
-    private companion object {
-        /** 点击「完成」后等服务端 final 的最长时间，超时则以最近 partial 软结束。 */
-        const val FINAL_AWAIT_MS = 4_000L
-    }
+    private companion object
 }
