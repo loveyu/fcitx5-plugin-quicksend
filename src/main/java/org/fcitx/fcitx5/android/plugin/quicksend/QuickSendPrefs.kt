@@ -45,6 +45,10 @@ object QuickSendPrefs {
     /** 模型下载 base URL（默认 HuggingFace，可改镜像） */
     const val VOICE_MODEL_BASE_URL = "voice_model_base_url"
 
+    /** 本地语音识别 .so 下载地址（构建期按当前版本/ABI 生成默认值，用户可改）。
+     *  空串表示用默认值。与模型下载共用同一个代理（VOICE_PROXY_URI）。 */
+    const val VOICE_NATIVE_LIB_URL = "voice_native_lib_url"
+
     /** 代理（单个 URI 字符串，如 http://127.0.0.1:7890、socks5://user:pass@host:1080；空=不用） */
     const val VOICE_PROXY_URI = "voice_proxy_uri"
 

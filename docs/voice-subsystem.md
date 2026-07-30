@@ -86,6 +86,26 @@ host 语音按钮
 - `cancel()` 取消下载并回 `Idle`；`delete()` 删模型文件（含 `.part`）；`refresh()` 在设置页 `onResume` 刷新就绪态。
 - 文件名（encoder/decoder/joiner/tokens）默认 zh Large int8 2025-06，可在设置页改 —— `QuickSendPrefs` 的 `VOICE_NAME_*` 键。
 
+## 动态加载 native 库：NativeLibManager + NativeLibLoader
+
+APK 不再打包 Sherpa 的 4 个 `.so`（`libonnxruntime/libsherpa-onnx-{c-api,cxx-api,jni}.so`）。用户启用本地识别时按需下载、`System.load` 动态加载。
+
+- **`NativeLibManager`**（下载/版本，镜像 `VoiceModelManager`）：
+  - 目录 `<filesDir>/native_libs/sherpa/<deviceAbi>/`；`deviceAbi` 取 `Build.SUPPORTED_ABIS` 中首个已发布项（`arm64-v8a/armeabi-v7a/x86_64`），都不命中回退 `arm64-v8a`。
+  - **默认地址构建期生成**：`BuildConfig.NATIVE_LIB_DEFAULT_URL`（`build.gradle.kts` 用当前 tag + `sherpaAarVersion` 拼出 GitHub Release 下 `sherpa-onnx-<ver>-{ABI}.zip`），`{ABI}` 运行时替换。设置页可改（键 `VOICE_NATIVE_LIB_URL`）。
+  - **与模型下载共用代理**：`download(ctx, url, ProxyConfig.fromUri(voice_proxy_uri))`，走 `VoiceHttp.client(proxy)`。下 zip → 解压 4 个 `.so`（临时文件 + 原子 rename）→ 写 `.source_url` 版本标记。
+  - 状态流复用 `DownloadState`；`isReady/downloadedVersion/needsRestart`；`loadIfReady(ctx): LoadResult`（Loaded/NotDownloaded/NeedsRestart/Failed）。
+- **`NativeLibLoader.ensureLoaded(ctx, libDir, version)`**（加载，仅做毫秒级加载不做下载）：
+  1. 反射把 `libDir` 注入 `DexPathList.nativeLibraryPathElements`（构造 `NativeLibraryElement(File)` 前置）。
+  2. 按依赖序 `System.load`：`libonnxruntime → libsherpa-onnx-c-api → libsherpa-onnx-cxx-api → libsherpa-onnx-jni`。
+  3. 记 `loadedVersion`。同版本重复调用幂等；已加载其它版本返回 false（`NeedsRestart`）。
+- **为何要反射注入路径**：`OnlineRecognizer`（AAR 内、不可改）静态块 `System.loadLibrary("sherpa-onnx-jni")` 只在类加载器 native 目录查找；APK 不打包则 `findLibrary` 返空 → `UnsatisfiedLinkError`。先把 4 个 .so `System.load` 进命名空间，再把目录注入 `nativeLibraryPathElements`，`loadLibrary` 即解析到我们的 jni 路径、随 path 去重命中已加载实例。
+- **反射坑**：`NativeLibraryElement` 是 `DexPathList` 的**嵌套**类、且 `(File)` 构造**包私有**——须 `getDeclaredConstructor`+`setAccessible(true)`，并用数组组件类型取类（勿硬编码 `dalvik.system.NativeLibraryElement`，会 CNFE）。
+- **加载时机**：`VoiceOverlayService.makeLocalRecognizer` 先 `loadIfReady(this)`；非 Loaded 抛异常（`voice_native_not_ready` / `voice_native_needs_restart` / 失败），由切换/启动流程捕获提示。
+- **重启策略**：`.so` 一个进程只能加载一次、不可卸载；用户下载新版后 `needsRestart=true`，需重启 App 才能用新 .so（设置页文案提示）。
+- **AVD 实测要点**：模拟器 `10.0.2.2` 在本机若被透明代理拦截可改用 `adb reverse tcp:8899 tcp:8899` + `http://127.0.0.1:8899/...`；debug 构建有直达语音设置页的桌面图标（`src/debug/AndroidManifest.xml`）与「测试加载（debug）」按钮，可无需 host 主程序验证下载+System.load+`OnlineRecognizer` 类初始化。
+
+
 ## 网络/代理
 
 - `ProxyConfig.fromUri(uri)`：单 URI 字符串解析为代理结构。`http(s)://` → HTTP 代理；`socks/socks4/socks5://` → SOCKS 代理；支持 `user:pass@host:port`；空串/非法 → `NONE`。默认端口 HTTP=8080、SOCKS=1080。

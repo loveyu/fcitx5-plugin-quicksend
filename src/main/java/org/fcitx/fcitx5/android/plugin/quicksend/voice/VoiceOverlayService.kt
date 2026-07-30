@@ -52,6 +52,8 @@ import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.recognizer
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.LoadResult
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.NativeLibManager
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelHolder
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaModelNames
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.sherpa.SherpaRecognizer
@@ -343,6 +345,17 @@ class VoiceOverlayService : Service() {
     }
 
     private suspend fun makeLocalRecognizer(prefs: SharedPreferences): SpeechRecognizer {
+        // 先确保 .so 已加载（APK 不再打包 native 库，需运行时按需下载）。失败抛出，
+        // 由调用方（startVoice / switchToLocalMode）捕获并提示 / 关闭浮层。
+        when (val r = NativeLibManager.loadIfReady(this)) {
+            LoadResult.Loaded -> Unit
+            LoadResult.NotDownloaded ->
+                throw IllegalStateException(getString(R.string.voice_native_not_ready))
+            is LoadResult.NeedsRestart ->
+                throw IllegalStateException(getString(R.string.voice_native_needs_restart))
+            is LoadResult.Failed ->
+                throw IllegalStateException(r.message)
+        }
         val dir = File(getExternalFilesDir(null) ?: filesDir, VoiceModelManager.MODEL_DIR_NAME)
         val recConfig = RecognitionConfig(
             decodingMethod = prefs.getString(QuickSendPrefs.VOICE_DECODING_METHOD, RecognitionConfig.DEFAULT_DECODING_METHOD) ?: RecognitionConfig.DEFAULT_DECODING_METHOD,

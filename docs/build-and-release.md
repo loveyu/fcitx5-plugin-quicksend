@@ -40,9 +40,17 @@ CI（`.github/workflows/build.yml`）的 `Replace mirror sources` 步骤做这�
 - `downloadSherpaAar` 任务：HuggingFace 主源 + `hf-mirror.com` 兜底，各 3 次重试；>1MB 才算成功。`fileTree("libs") { builtBy("downloadSherpaAar") }` 声明产出，所有 `compile*Kotlin` 任务自动依赖它。
 - CI 按 Sherpa 版本缓存 `libs/`（`actions/cache`，key 含 `sherpaAarVersion`），避免每次重下。
 
-## ABI 拆分
+## 单 APK + native 库运行时下载
 
-`splits.abi` 开启，输出 `arm64-v8a` / `armeabi-v7a` / `x86_64` 三个独立 APK，**无 universal 包**（Sherpa native 库随 ABI 拆开，控制单包体积）。
+**不再按 ABI 拆包，也不再把 Sherpa 的 4 个 `.so` 打入 APK。** `splits.abi` 已移除，产物是一个体积很小的 **universal 单 APK**（~12MB，仅含 Compose 的小 `libandroidx.graphics.path.so`）。Sherpa 的 `libonnxruntime/libsherpa-onnx-{c-api,cxx-api,jni}.so` 改为**用户启用本地语音识别时按需下载**（见 [voice-subsystem.md](voice-subsystem.md) §动态加载 native 库），不需要本地识别的用户零下载。
+
+- `build.gradle.kts` 用 `packaging.jniLibs.excludes` 排除这 4 个 `.so`，AAR 仍提供 `com.k2fsa.sherpa.onnx.*` Java 类。
+- **默认下载地址由构建期生成**：`BuildConfig.NATIVE_LIB_DEFAULT_URL` = `https://github.com/loveyu/fcitx5-plugin-quicksend/releases/download/<当前tag>/sherpa-onnx-<sherpaAarVersion>-{ABI}.zip`，`{ABI}` 占位符运行时按设备首选 ABI 替换。用户可在设置页改成镜像/自建源。
+- **CI 发布时把各 ABI 的 4 个 `.so` 打成 zip 上传**（`sherpa-onnx-<ver>-<abi>.zip`）到 GitHub Release 资产。zip 是为了避开裸 `.so` 被浏览器/Cloud 拦截。
+
+## 动态加载的 ABI 范围
+
+已发布 `.so` zip 覆盖 `arm64-v8a` / `armeabi-v7a` / `x86_64`（AAR 内另有 `x86`，但未发布）。设备首选 ABI 取 `Build.SUPPORTED_ABIS` 中首个已发布项；都不命中回退 `arm64-v8a`（默认 URL 对该设备会 404，需用户手动指定）。
 
 ## 版本号
 
@@ -59,7 +67,7 @@ CI（`.github/workflows/build.yml`）的 `Replace mirror sources` 步骤做这�
 ## CI（`.github/workflows/build.yml`）
 
 - **debug** job：`push` 到 `main`/`dev` 触发；JDK 17 → 换官方源 → 恢复 Sherpa 缓存 → `assembleDebug` → 上传 APK artifact（保留 30 天）。
-- **release** job：打 `v*` tag 触发；从 `secrets.KEYSTORE_BASE64` 解出 keystore 到 `$RUNNER_TEMP`，设 `SIGNING_*` 环境变量 → `assembleRelease` → 重命名为 `QuickSendPlugin-<tag>-release.apk` → 上传 artifact（90 天）+ `softprops/action-gh-release` 建 GitHub Release（`generate_release_notes: true`）。`if: always()` 清理 keystore。
+- **release** job：打 `v*` tag 触发；从 `secrets.KEYSTORE_BASE64` 解出 keystore 到 `$RUNNER_TEMP`，设 `SIGNING_*` 环境变量 → `assembleRelease` → 产出单 APK 重命名为 `QuickSendPlugin-<tag>-release.apk`，并从 AAR 抽取各 ABI 的 4 个 `.so` 打成 `sherpa-onnx-<ver>-<abi>.zip` → 一并上传 artifact（90 天）+ `softprops/action-gh-release` 建 GitHub Release（APK + 3 个 .so zip，`generate_release_notes: true`）。`if: always()` 清理 keystore。
 
 ## 常见命令速查
 

@@ -103,28 +103,37 @@ jobs:
           PLUGIN_VERSION: ${{ github.ref_name }}
         run: ./gradlew assembleRelease
 
-      - name: Collect Release APKs (all ABIs)
+      - name: Collect Release artifacts
         run: |
+          set -e
           mkdir -p release-apks
-          for apk in build/outputs/apk/release/*.apk; do
-            [ -f "$apk" ] || continue
-            fname=$(basename "$apk" .apk)
-            abi=$(echo "$fname" | sed -E 's/.*-(arm64-v8a|armeabi-v7a|x86_64|x86)-.*/\1/')
-            cp "$apk" "release-apks/QuickSendPlugin-${{ github.ref_name }}-release-${abi}.apk"
+          # APK 不再按 ABI 拆分（native 库改为运行时下载），只产出一个 universal 单包
+          cp build/outputs/apk/release/*.apk "release-apks/QuickSendPlugin-${{ github.ref_name }}-release.apk"
+          # 从 AAR 抽取各 ABI 的 4 个 .so 打成 zip 上传（zip 可避免裸 .so 被 Cloud/浏览器拦截）
+          v=$(awk -F'"' '/sherpaAarVersion = "/{print $2; exit}' build.gradle.kts)
+          tmp=$(mktemp -d)
+          unzip -q libs/sherpa-onnx-$v.aar 'jni/*' -d "$tmp"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            (cd "$tmp/jni/$abi" && zip -q "$GITHUB_WORKSPACE/release-apks/sherpa-onnx-$v-$abi.zip" *.so)
           done
+          rm -rf "$tmp"
           ls -la release-apks/
 
       - name: Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: QuickSendPlugin-${{ github.ref_name }}-release
-          path: release-apks/*.apk
+          path: |
+            release-apks/*.apk
+            release-apks/*.zip
           retention-days: 90
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-apks/*.apk
+          files: |
+            release-apks/*.apk
+            release-apks/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

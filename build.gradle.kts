@@ -42,6 +42,23 @@ fun tagToVersionCode(tag: String): Int? {
     return 9_000_000 + major * 100_000 + minor * 1_000 + patch
 }
 
+// Sherpa-ONNX 官方 AAR 版本（构建期拉取，离线时手动放 libs/）。
+// 同时用于：默认 .so 下载地址与 CI 发布的 .so zip 命名。
+val sherpaAarVersion = "1.12.21"
+
+// 当前构建对应的 Git tag（带 v 前缀），用于生成默认 .so 下载地址（指向本版本的 GitHub Release 资产）。
+// CI release：PLUGIN_VERSION 环境变量 = github.ref_name（如 v0.9.5）；
+// 本地/未打 tag：取最近 tag，都无则为占位 v0.0.0-dev（仅占位，本地测试时由用户改成自建源）。
+val releaseTag: String = run {
+    val raw = (System.getenv("PLUGIN_VERSION")?.takeIf { it.isNotBlank() }
+        ?: runGitCmd("describe", "--tags", "--abbrev=0")).trim()
+    when {
+        raw.startsWith("v") -> raw
+        raw.isNotBlank() -> "v$raw"
+        else -> "v0.0.0-dev"
+    }
+}
+
 android {
     namespace = "org.fcitx.fcitx5.android.plugin.quicksend"
     compileSdk = 35
@@ -67,6 +84,14 @@ android {
         versionCode = envVersionCode?.toIntOrNull()
             ?: tagToVersionCode(tagName)
             ?: (1_000_000 + gitCommitCount())
+
+        // 默认 .so 下载地址：指向本版本 GitHub Release 下按 ABI 拆分的 zip 资产。
+        // {ABI} 占位符由运行时按设备首选 ABI 替换（见 NativeLibManager.defaultUrl）。
+        buildConfigField(
+            "String",
+            "NATIVE_LIB_DEFAULT_URL",
+            "\"https://github.com/loveyu/fcitx5-plugin-quicksend/releases/download/$releaseTag/sherpa-onnx-$sherpaAarVersion-{ABI}.zip\""
+        )
     }
 
     compileOptions {
@@ -112,13 +137,17 @@ android {
         }
     }
 
-    // 按 ABI 拆分输出独立 APK，避免单包过大（Sherpa native 库随 ABI 拆开）
-    splits {
-        abi {
-            isEnable = true
-            reset()
-            include("arm64-v8a", "armeabi-v7a", "x86_64")
-            isUniversalApk = false
+    // 不再按 ABI 拆包：native 库（Sherpa .so）改为运行时按需下载、不随 APK 打包，
+    // 产出一个体积很小的 universal 单 APK。.so 在 CI 发布时按 ABI 打 zip 上传到 Release 资产。
+    packaging {
+        jniLibs {
+            // 排除 Sherpa 的 4 个 .so，确保不打入 APK（运行时由 NativeLibManager 动态加载）
+            excludes += listOf(
+                "**/libonnxruntime.so",
+                "**/libsherpa-onnx-c-api.so",
+                "**/libsherpa-onnx-cxx-api.so",
+                "**/libsherpa-onnx-jni.so"
+            )
         }
     }
 }
@@ -160,7 +189,6 @@ dependencies {
 
 // Sherpa-ONNX 官方 AAR 拉取（构建期可选任务；离线/被墙时手动放 AAR 到 libs/）。
 // HuggingFace 不通时为 gradle 设置代理（gradle.properties 的 https.proxyHost/Port）或改下面 URL 为镜像。
-val sherpaAarVersion = "1.12.21"
 val sherpaAarFile = file("libs/sherpa-onnx-$sherpaAarVersion.aar")
 tasks.register("downloadSherpaAar") {
     description = "Download the official Sherpa-ONNX Android AAR into libs/"

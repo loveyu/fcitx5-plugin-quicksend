@@ -52,7 +52,11 @@
 
 - **三路独立绑定 host**：`MainService` 反向绑定（填 `RemoteServiceHolder`）+ `QuickSendOverlayService` / `VoiceOverlayService` 各自绑定。代价是三处 `bindService` 逻辑重复；收益是插件 APK 更新后 host 尚未重连 `MainService` 时，悬浮按钮 / 语音仍可用各自连接。不要为「去重」合并它们。
 - **Sherpa AAR 不入库**：`libs/*.aar` gitignore（~40MB），构建期下载。代价是首次 / CI 依赖网络；收益是仓库轻。被墙环境见 [build-and-release.md](build-and-release.md) §Sherpa-ONNX AAR。
-- **无 universal APK**：ABI 拆分控单包体积（Sherpa native 库随 ABI 拆开）。
+- **native 库运行时下载（动态 System.load）**：Sherpa 的 4 个 `.so` 不入 APK，改为用户启用本地识别时按需下载。要点/坑：
+  - `OnlineRecognizer`（AAR 内，不可改）静态块 `System.loadLibrary("sherpa-onnx-jni")` 只在类加载器 native 目录查找；APK 不打包就找不到。故 `NativeLibLoader` 先 `System.load` 全部 4 个 .so（依赖序）进链接器命名空间，再**反射**把 .so 目录注入 `DexPathList.nativeLibraryPathElements` 使该 `loadLibrary` 解析成功。
+  - **反射坑（已踩）**：`NativeLibraryElement` 是 `DexPathList` 的**嵌套**类（`dalvik.system.DexPathList$NativeLibraryElement`），且其 `(File)` 构造为**包私有**——必须 `getDeclaredConstructor` + `setAccessible(true)`，并用数组组件类型取类（勿硬编码类名）。详见 [voice-subsystem.md](voice-subsystem.md) §动态加载。
+  - `.so` 一个进程只能加载一次、不可卸载；换版本需重启 App（`NativeLibManager.needsRestart`）。
+  - 代价：用户多一步「下载引擎」；收益：APK 从 3×~40MB 降到单包 ~12MB，不需要本地识别的用户零下载。
 - **模型进程级单例**：`SherpaModelHolder` 持 `OnlineRecognizer` 常驻内存，插件不销毁不释放；`RecognitionConfig` 变更按 `toSignature()` 自动重载。代价是占用内存（数十 MB）；收益是避免每次语音会话重载（~1-5s）。
 - **远端失败默认不静默回退**（鉴权/满载）：用「明确提示」换「用户感知」，避免误以为本地正常。
 - **全应用 Compose（悬浮窗除外）**：所有页面与弹窗（主页、本地语音设置、外观、日志、远端语音识别、编辑条目抽屉、颜色选择器）均已迁移到 Jetpack Compose + Material3，共用 `ui/theme/QuickSendTheme`（随系统深色模式）与 `ui/components/`（`QuickSendTopBar` 统一图标返回等）。仅两个悬浮模块（`QuickSendOverlayService`/`VoiceOverlayService`，WindowManager overlay）仍是编程式 View——它们不是「页面」且需直接操作窗口，保持 View 实现不动。代价是悬浮窗与页面两套 UI 栈并存；收益是页面层观感统一、亮/暗模式一致、无 XML/ViewBinding 维护负担。旧的 `QuickSendAdapter`/`FlowLayout`/`KeyPicker`/`ColorPickerDialog`/`OverlayButtonRenderer` 及全部布局 XML 已删除。

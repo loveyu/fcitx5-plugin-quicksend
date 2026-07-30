@@ -25,7 +25,7 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 - **JDK**：用 JDK 17+ 运行 Gradle（AGP 9 / Gradle 9 要求）；`compileOptions` 字节码目标为 Java 11。
 - **单测过滤**：`./gradlew test --tests "org.fcitx....ClassName.methodName"`（有测试时）。
 - 无 instrumented 测试（`src/androidTest`）；`src/test` 有腾讯 ASR 客户端签名单测（`TencentV2SigningTest` / `TencentAsrV1SigningTest`）。
-- 产物：`build/outputs/apk/{debug,release}/`。按 ABI 拆 3 个包（arm64-v8a / armeabi-v7a / x86_64），无 universal 包。
+- 产物：`build/outputs/apk/{debug,release}/`。**单个 universal APK**（~12MB）——Sherpa 的 4 个 `.so` 不再入包，改为运行时按需下载（见下「native 库动态加载」）。
 
 ## 架构（全貌）
 
@@ -49,6 +49,7 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 - ⚠️ **Final=会话结束铁律**：`VoiceController.handle(Final)` 提交后必 `endSession`，故按句返回的远端后端只累积稳态句（`appendStable`）+ 发 Partial，会话结束（`final==1`/超时软结束）才一次性 `markFinal`，否则首句终止会话 + 重复提交。改腾讯识别器务必守此铁律。
 - ⚠️ **网络 IO 禁压主线程**：任何远端识别器的上传/下载/HTTP 调用（OkHttp `execute()` 等同步阻塞调用）**必须**包裹 `withContext(Dispatchers.IO)`，绝不能在主线程执行。Android StrictMode 会直接抛 `NetworkOnMainThreadException`。已有教训：`GlmAsrRecognizer.stop()` 曾在主线程同步调用 `uploadAndParse()` 导致崩溃。
 - 模型运行时下载（`VoiceModelManager`，默认 HuggingFace，可改镜像/代理）。扩展点 `TextRefiner`（大模型润色）仍是占位接口；在线 ASR 已由 `RemoteBackend` 多后端实现（不走 `RecognizerProvider`）。
+- ⚠️ **native 库动态加载**（`NativeLibManager` + `NativeLibLoader`）：APK 不打包 Sherpa 的 4 个 `.so`，用户启用本地识别时从设置页下载（默认地址构建期生成，与模型下载**共用同一个代理**）。加载链：`System.load` 4 个 `.so`（依赖序 onnxruntime→c-api→cxx-api→jni）+ 反射把 .so 目录注入 `DexPathList.nativeLibraryPathElements`，使 `OnlineRecognizer` 静态块 `System.loadLibrary("sherpa-onnx-jni")` 解析成功。`.so` 一个进程只能加载一次，**换版本需重启 App**（`needsRestart`）。
 
 ## 关键约束与坑
 
@@ -56,7 +57,7 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 
 - **签名一致**：插件通过 signature 级 IPC 权限绑定 host，**双方必须用相同签名证书**。debug：双方都用标准 Android debug keystore；release：用与 host 一致的 release keystore。签名配置来自 `local.properties` 的 `signing.*` 或 `SIGNING_*` 环境变量。
 - **镜像源**：`settings.gradle.kts` 前置阿里云镜像、`gradle-wrapper.properties` 用腾讯云 gradle 分发镜像。**CI 会用 `sed` 把这些改回官方源**，本地依赖这些镜像（被墙环境）。改仓库源时两处都要看。
-- **Sherpa AAR 不入库**：`libs/*.aar` 被 gitignore（~40MB），构建期由 `downloadSherpaAar` 任务从 HF 拉（带 `hf-mirror.com` 兜底）。本地被墙时可手动放 AAR 或给 Gradle 配代理（`gradle.properties` 的 `https.proxyHost/Port`）。
+- **Sherpa AAR 不入库**：`libs/*.aar` 被 gitignore（~40MB），构建期由 `downloadSherpaAar` 任务从 HF 拉（带 `hf-mirror.com` 兜底）。本地被墙时可手动放 AAR 或给 Gradle 配代理（`gradle.properties` 的 `https.proxyHost/Port`）。AAR 仍提供 Java 类，但其 `.so` 经 `packaging.jniLibs.excludes` 排除、不入 APK（改为运行时下载，见上）。
 - **版本号**：不在代码里维护，**由 git tag 决定**（`build.gradle.kts` 的 `gitTagName()`/`tagToVersionCode()`）。`versionName` = 最近 tag 去 `v` 前缀；`versionCode` = `9_000_000 + major*100_000 + minor*1_000 + patch`（如 `0.9.0`→`9009000`）。环境变量 `PLUGIN_VERSION`/`PLUGIN_VERSION_CODE` 可覆盖（CI 用）。发版=打 tag，无需改文件。
 
 ## 文档索引

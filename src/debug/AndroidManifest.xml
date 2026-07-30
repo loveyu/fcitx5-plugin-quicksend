@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅 debug 构建：桌面图标直达语音设置页，便于 adb / AVD 实测 .so 下载与加载。
+     不随 release 打包（src/debug 仅 debug 变体生效）。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity-alias
+            android:name=".VoiceSettingsLauncher"
+            android:targetActivity="org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceSettingsActivity"
+            android:exported="true"
+            android:label="QuickSend 语音测试"
+            android:theme="@style/Theme.QuickSend">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+    </application>
+</manifest>
