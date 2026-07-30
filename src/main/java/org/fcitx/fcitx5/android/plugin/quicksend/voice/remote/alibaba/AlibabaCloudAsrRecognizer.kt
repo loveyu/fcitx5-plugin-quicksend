@@ -27,7 +27,9 @@ import java.util.UUID
  * - 客户端发 StopTranscription 结束，服务端响应 TranscriptionComplete。
  * - 多句识别：按句返回 SentenceEnd 结果累积在 [appendStable]，TranscriptionComplete 时一次性提交。
  *
- * Token 通过 AK/SK 调用阿里云 Token API 获取，目前由用户在设置页手动填入。
+ * Token 支持两种方式（优先前者）：
+ * 1. 手动填入 token 字段；
+ * 2. 提供 AK/SK（accessKeyId + accessKeySecret），连接时自动调用 CreateToken API 获取。
  */
 class AlibabaCloudAsrRecognizer(private val config: AlibabaCloudAsrBackend) :
     BaseWsStreamingRecognizer(config.proxy) {
@@ -37,14 +39,41 @@ class AlibabaCloudAsrRecognizer(private val config: AlibabaCloudAsrBackend) :
 
     /** StartTranscription 发出的 task_id，StopTranscription 时回传匹配。 */
     private var taskId: String = ""
+    /** 自动获取的 Token 缓存（内存，进程生命周期）。 */
+    @Volatile private var cachedToken: AlibabaCreateToken.TokenResult? = null
 
     override fun buildRequest(): Request {
         require(config.url.isNotBlank()) { "alibaba cloud url is empty" }
-        require(config.token.isNotBlank()) { "alibaba cloud token is empty" }
         require(config.appKey.isNotBlank()) { "alibaba cloud appKey is empty" }
-        val wsUrl = "${config.url}?token=${config.token}"
+        val token = resolveToken() ?: throw IllegalStateException("alibaba cloud token is empty and AK/SK not provided")
+        val wsUrl = "${config.url}?token=$token"
         VoiceLog.i(tag, "wss to ${config.url.take(40)}... appKey=${config.appKey.takeMasked()}")
         return Request.Builder().url(wsUrl).build()
+    }
+
+    /**
+     * 解析 Token：手动填入优先，否则用 AK/SK 自动获取（带内存缓存，过期自动刷新）。
+     */
+    private fun resolveToken(): String? {
+        if (config.token.isNotBlank()) return config.token
+        if (!config.canAutoFetchToken) return null
+
+        // 检查缓存
+        val cached = cachedToken
+        if (cached != null && cached.isValid) {
+            VoiceLog.d(tag, "using cached token, expires at ${cached.expireTime}")
+            return cached.id
+        }
+
+        VoiceLog.i(tag, "auto-fetching token via CreateToken API")
+        val result = AlibabaCreateToken.fetchToken(config.accessKeyId, config.accessKeySecret)
+        if (result != null && result.isValid) {
+            cachedToken = result
+            VoiceLog.i(tag, "token fetched, expires at ${result.expireTime}")
+            return result.id
+        }
+        VoiceLog.w(tag, "token fetch failed")
+        return null
     }
 
     override fun sendStart(webSocket: WebSocket) {

@@ -98,6 +98,8 @@ fun RemoteBackendEditDrawer(
     var hotword by remember(backend.id) { mutableStateOf(tencent?.hotwordList ?: "") }
     var appKey by remember(backend.id) { mutableStateOf(alibaba?.appKey ?: "") }
     var alibabaToken by remember(backend.id) { mutableStateOf(alibaba?.token ?: "") }
+    var alibabaAkId by remember(backend.id) { mutableStateOf(alibaba?.accessKeyId ?: "") }
+    var alibabaAkSecret by remember(backend.id) { mutableStateOf(alibaba?.accessKeySecret ?: "") }
     var alibabaSampleRate by remember(backend.id) { mutableStateOf((alibaba?.sampleRate ?: 16000).toString()) }
     var alibabaIntermediate by remember(backend.id) { mutableStateOf(alibaba?.enableIntermediateResult ?: true) }
     var alibabaPunctuation by remember(backend.id) { mutableStateOf(alibaba?.enablePunctuationPrediction ?: true) }
@@ -153,13 +155,15 @@ fun RemoteBackendEditDrawer(
             )
         }
         is AlibabaCloudAsrBackend -> {
-            if (url.isBlank() || appKey.isBlank() || alibabaToken.isBlank()) null
+            if (url.isBlank() || appKey.isBlank()) null
             else backend.copy(
                 name = name.trim().ifBlank { "alibaba-asr" },
                 enable = enable, proxy = proxy.trim(),
                 url = url.trim(),
                 appKey = appKey.trim(),
                 token = alibabaToken.trim(),
+                accessKeyId = alibabaAkId.trim(),
+                accessKeySecret = alibabaAkSecret.trim(),
                 enableIntermediateResult = alibabaIntermediate,
                 enablePunctuationPrediction = alibabaPunctuation,
                 enableInverseTextNormalization = alibabaItn,
@@ -274,6 +278,22 @@ fun RemoteBackendEditDrawer(
                     OutlinedTextField(
                         value = alibabaToken, onValueChange = { alibabaToken = it },
                         label = { Text(stringResource(R.string.alibaba_field_token)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(R.string.alibaba_token_or_ak),
+                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall
+                    )
+                    OutlinedTextField(
+                        value = alibabaAkId, onValueChange = { alibabaAkId = it },
+                        label = { Text(stringResource(R.string.alibaba_field_accesskey_id)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = alibabaAkSecret, onValueChange = { alibabaAkSecret = it },
+                        label = { Text(stringResource(R.string.alibaba_field_accesskey_secret)) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()

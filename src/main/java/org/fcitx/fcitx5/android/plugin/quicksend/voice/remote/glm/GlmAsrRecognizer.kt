@@ -19,9 +19,6 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import okio.Buffer
-import okio.ByteString.Companion.toByteString
-import okio.buffer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.ErrorKind
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.RecognitionEvent
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.RemoteAsrException
@@ -36,7 +33,6 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
@@ -126,7 +122,7 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
             return
         }
         try {
-            uploadAndParse(pcmBytes)
+            withContext(Dispatchers.IO) { uploadAndParse(pcmBytes) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -200,47 +196,43 @@ class GlmAsrRecognizer(private val config: GlmAsrBackend) : SpeechRecognizer {
                     throw RemoteAsrException("glm asr HTTP ${response.code}: $body", kind)
                 }
                 response.body?.let { body ->
-                    body.source().let { source ->
-                        val sb = StringBuilder()
-                        source.buffer.use { bufferedSource ->
-                            while (!bufferedSource.exhausted()) {
-                                val line = bufferedSource.readUtf8Line() ?: break
-                                if (line.startsWith("data: ") && line.length > 6) {
-                                    val data = line.substring(6)
-                                    if (data == "[DONE]") {
-                                        // SSE 流结束，下发 Final
-                                        val finalText = sb.toString()
-                                        VoiceLog.i(TAG, "sse done, final: $finalText")
-                                        eventChannel.trySend(RecognitionEvent.Final(finalText))
-                                        break
-                                    }
-                                    try {
-                                        val obj = JSONObject(data)
-                                        val type = obj.optString("type", "")
-                                        val delta = obj.optString("delta", "")
-                                        when (type) {
-                                            "transcript.text.delta" -> {
-                                                if (delta.isNotEmpty()) {
-                                                    sb.append(delta)
-                                                    VoiceLog.d(TAG, "delta: $delta → partial: $sb")
-                                                    eventChannel.trySend(RecognitionEvent.Partial(sb.toString()))
-                                                }
-                                            }
-                                            "transcript.text.done" -> {
-                                                // done 事件的最终文本用 `text` 兜底（短语音可能无 delta）
-                                                val finalInDone = obj.optString("text", "")
-                                                if (finalInDone.isNotEmpty()) {
-                                                    sb.setLength(0)
-                                                    sb.append(finalInDone)
-                                                }
-                                                val finalText = sb.toString()
-                                                VoiceLog.i(TAG, "done: $finalText")
-                                                eventChannel.trySend(RecognitionEvent.Final(finalText))
+                    val sb = StringBuilder()
+                    body.source().use { source ->
+                        while (!source.exhausted()) {
+                            val line = source.readUtf8Line() ?: break
+                            if (line.startsWith("data: ") && line.length > 6) {
+                                val data = line.substring(6)
+                                if (data == "[DONE]") {
+                                    val finalText = sb.toString()
+                                    VoiceLog.i(TAG, "sse done, final: $finalText")
+                                    eventChannel.trySend(RecognitionEvent.Final(finalText))
+                                    break
+                                }
+                                try {
+                                    val obj = JSONObject(data)
+                                    val type = obj.optString("type", "")
+                                    val delta = obj.optString("delta", "")
+                                    when (type) {
+                                        "transcript.text.delta" -> {
+                                            if (delta.isNotEmpty()) {
+                                                sb.append(delta)
+                                                VoiceLog.d(TAG, "delta: $delta → partial: $sb")
+                                                eventChannel.trySend(RecognitionEvent.Partial(sb.toString()))
                                             }
                                         }
-                                    } catch (e: Exception) {
-                                        VoiceLog.w(TAG, "bad sse data: $data", e)
+                                        "transcript.text.done" -> {
+                                            val finalInDone = obj.optString("text", "")
+                                            if (finalInDone.isNotEmpty()) {
+                                                sb.setLength(0)
+                                                sb.append(finalInDone)
+                                            }
+                                            val finalText = sb.toString()
+                                            VoiceLog.i(TAG, "done: $finalText")
+                                            eventChannel.trySend(RecognitionEvent.Final(finalText))
+                                        }
                                     }
+                                } catch (e: Exception) {
+                                    VoiceLog.w(TAG, "bad sse data: $data", e)
                                 }
                             }
                         }

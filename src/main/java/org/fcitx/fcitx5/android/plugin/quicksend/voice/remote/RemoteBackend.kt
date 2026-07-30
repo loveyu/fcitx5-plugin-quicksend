@@ -95,8 +95,12 @@ data class AlibabaCloudAsrBackend(
     val url: String = "",
     /** 阿里云控制台项目 AppKey，必填。 */
     val appKey: String = "",
-    /** 鉴权 Token（通过 AK/SK 调用 Token API 获取），必填。 */
+    /** 鉴权 Token（手动填入或用 AK/SK 自动获取）。与 accessKeyId+accessKeySecret 二选一。 */
     val token: String = "",
+    /** AccessKey ID（可选，用于自动获取 Token）。提供后优先用 token（若已填），否则自动获取。 */
+    val accessKeyId: String = "",
+    /** AccessKey Secret（可选，配合 accessKeyId 自动获取 Token）。 */
+    val accessKeySecret: String = "",
     /** 是否返回中间识别结果，默认 true。 */
     val enableIntermediateResult: Boolean = true,
     /** 是否添加标点，默认 true。 */
@@ -108,6 +112,8 @@ data class AlibabaCloudAsrBackend(
 ) : RemoteBackend {
     override fun withTested(tested: Boolean): RemoteBackend = copy(tested = tested)
     override fun withEnable(enable: Boolean): RemoteBackend = copy(enable = enable)
+    /** 是否有 AK/SK 凭据可用于自动获取 Token（token 字段为空时生效）。 */
+    val canAutoFetchToken: Boolean get() = accessKeyId.isNotBlank() && accessKeySecret.isNotBlank()
 
     companion object {
         /** 阿里云实时语音识别默认服务地址（上海外网）。 */

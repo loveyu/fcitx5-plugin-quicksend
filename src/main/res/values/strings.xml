@@ -161,7 +161,10 @@
     <string name="alibaba_copy_default">复制默认地址（wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1）</string>
     <string name="alibaba_default_copied">已复制默认地址，粘贴到上方输入框</string>
     <string name="alibaba_field_appkey">项目 AppKey</string>
-    <string name="alibaba_field_token">鉴权 Token</string>
+    <string name="alibaba_field_token">鉴权 Token（与 AK/SK 二选一）</string>
+    <string name="alibaba_token_or_ak">Token 与 AK/SK 二选一即可，优先使用 Token</string>
+    <string name="alibaba_field_accesskey_id">AccessKey ID（可选，用于自动获取 Token）</string>
+    <string name="alibaba_field_accesskey_secret">AccessKey Secret（可选）</string>
     <string name="alibaba_field_sample_rate">采样率（8000/16000，默认 16000）</string>
     <string name="alibaba_field_intermediate">返回中间结果</string>
     <string name="alibaba_field_punctuation">添加标点</string>
