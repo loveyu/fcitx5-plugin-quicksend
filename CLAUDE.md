@@ -47,6 +47,7 @@ fcitx5-android 的**快捷发送独立插件 APK**（参考 `fcitx5-android-clip
 - **流式注入**：partial 经 `setComposingText` 写入输入框组合区；final 经可选 `TextRefiner`（当前 `NoOpRefiner`）后 `commitText`。
 - ⚠️ **native 线程铁律**：`SherpaRecognizer` 中所有 Sherpa 原生对象（recognizer/stream/AudioRecord）只在唯一的 `nativeThread` 上创建、使用、释放；`stop/cancel/releaseNow` 仅翻转 volatile 标志并 `join` 该线程，**绝不跨线程直接接触原生对象**。违反会导致 `acceptWaveform` 处 native SIGSEGV（use-after-free，已踩过坑）。
 - ⚠️ **Final=会话结束铁律**：`VoiceController.handle(Final)` 提交后必 `endSession`，故按句返回的远端后端只累积稳态句（`appendStable`）+ 发 Partial，会话结束（`final==1`/超时软结束）才一次性 `markFinal`，否则首句终止会话 + 重复提交。改腾讯识别器务必守此铁律。
+- ⚠️ **网络 IO 禁压主线程**：任何远端识别器的上传/下载/HTTP 调用（OkHttp `execute()` 等同步阻塞调用）**必须**包裹 `withContext(Dispatchers.IO)`，绝不能在主线程执行。Android StrictMode 会直接抛 `NetworkOnMainThreadException`。已有教训：`GlmAsrRecognizer.stop()` 曾在主线程同步调用 `uploadAndParse()` 导致崩溃。
 - 模型运行时下载（`VoiceModelManager`，默认 HuggingFace，可改镜像/代理）。扩展点 `TextRefiner`（大模型润色）仍是占位接口；在线 ASR 已由 `RemoteBackend` 多后端实现（不走 `RecognizerProvider`）。
 
 ## 关键约束与坑

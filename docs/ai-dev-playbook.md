@@ -48,6 +48,7 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 
 ## 3. 语音：高频坑
 
+- ⚠️ **网络 IO 禁压主线程**：任何远端识别器的 HTTP 调用（OkHttp `execute()` 等同步阻塞操作）**必须**包裹 `withContext(Dispatchers.IO)`，绝不能在主线程执行。Android StrictMode 直接抛 `NetworkOnMainThreadException`。GlmAsrRecognizer `uploadAndParse()` 已踩过此坑——stop() 是 suspend 函数但调用方默认在主线程协程执行，若不在内部切 IO 调度器则崩溃。
 - ⚠️ **native 线程铁律（防 SIGSEGV）**：`SherpaRecognizer` 的所有原生对象（stream/AudioRecord）只在唯一的 `nativeThread` 上创建/使用/释放；`stop/cancel/releaseNow` 仅翻转 `@Volatile` 标志并 `join` 该线程，**绝不跨线程直接接触原生对象**。违反会在 `acceptWaveform` 处 native SIGSEGV（历史教训见 [tech-debt.md](tech-debt.md)）。
 - ⚠️ **切换模式的初始化真空期**：浮层顶部「强制本地」开关切换本地/网络时，`teardownCurrentController()` 后到新 controller 接管前，UI 不再被 state 驱动。**必须在 teardown 后立即 `updateUi(VoiceUiState.Initializing)`**，否则状态冻结在切换前的 `[N]正在聆听`（实际网络已断、本地在加载）。见 [tech-debt.md](tech-debt.md)。
 - **模型首次加载数秒**（`SherpaModelHolder.getOrLoad`，进程级单例常驻内存）；初始启动经 `VoiceController.start()` 内部加载，`Initializing` 状态天然覆盖加载期。
@@ -70,7 +71,7 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 ## 5. 日志与调试
 
 - `VoiceLog` / `AppLog` 落**应用专用外部目录**文件（`VoiceLog` 2MB 自动轮转），语音设置页右上角 → 调试日志设置页可清空 / 分享（经 `FileProvider`）、开 `LOG_DEBUG_ENABLED`（同时落盘 + logcat，默认关，仅 WARN+）。
-- **logcat tag 速查**（非穷尽）：`QuickSendMainService`（绑定）/ `QuickSendExecutor`（发送）/ `VoiceCtrl`（语音编排）/ `SherpaRec`（本地识别）/ `ModelHolder`（模型加载）/ `RemoteASR`（streaming-asr-server 识别）/ `TencentASRv1`（腾讯 V1 识别）/ `TencentASR`（腾讯 V2 识别）/ `VoiceOverlay`（语音浮层）/ `VoiceModel`（模型下载）。
+- **logcat tag 速查**（非穷尽）：`QuickSendMainService`（绑定）/ `QuickSendExecutor`（发送）/ `VoiceCtrl`（语音编排）/ `SherpaRec`（本地识别）/ `ModelHolder`（模型加载）/ `RemoteASR`（streaming-asr-server 识别）/ `TencentASRv1`（腾讯 V1 识别）/ `TencentASR`（腾讯 V2 识别）/ `GlmASR`（智谱 GLM ASR 识别）/ `VoiceOverlay`（语音浮层）/ `VoiceModel`（模型下载）。
 - 联调「发送没反应」：先 logcat 过 `QuickSendExecutor`/`QuickSendMainService` 看 `Remote service not connected` / `Send failed`，再排查 host 实现 / 签名 / 三路绑定。
 
 ## 6. 协作规范（AI 写代码 / 文档时遵守）

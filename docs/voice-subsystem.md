@@ -114,6 +114,14 @@ host 语音按钮
 - "重置默认"按钮同步清除识别参数 prefs。
 - 参数变更后需要重新触发模型加载（`SherpaModelHolder` 按 `config.toSignature()` 检测差异并自动重载）。
 
+## ⚠️ 网络 IO 线程纪律
+
+**远端 ASR 识别器内的所有 HTTP 调用（OkHttp `execute()` 等同步阻塞操作）必须在 `Dispatchers.IO` 上执行，绝不能压在主线程。**
+
+- HTTP REST 型识别器（如 `GlmAsrRecognizer`）：`stop()` 内上传音频并解析 SSE 响应的环节是同步阻塞的，必须用 `withContext(Dispatchers.IO) { ... }` 包裹。
+- WebSocket 型识别器（`BaseWsStreamingRecognizer` 子类）：OkHttp WebSocket 自身在后台线程收发，但若未来新增同步 HTTP 调用（如 pre-signed URL 获取、鉴权令牌刷新等），同样必须切至 IO 线程。
+- 违反 → `NetworkOnMainThreadException`（Android StrictMode 强制拒绝主线程网络）。
+
 ## 远端 ASR（多后端，链式回退）
 
 远端不再是单后端 + 三键 prefs，而是**可插拔多后端**体系：
