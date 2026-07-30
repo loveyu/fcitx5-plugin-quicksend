@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.QuickSendTopBar
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.AlibabaCloudAsrBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.StreamingAsrServerBackend
@@ -141,6 +142,10 @@ fun RemoteAsrSettingsScreen(onBack: () -> Unit) {
                         showAdd = false
                         editing = TencentAsrV2Backend(id = RemoteBackendStore.newId(), name = "tencent-asr-v2")
                     }) { Text(stringResource(R.string.remote_type_tencent)) }
+                    TextButton(onClick = {
+                        showAdd = false
+                        editing = AlibabaCloudAsrBackend(id = RemoteBackendStore.newId(), name = "alibaba-asr")
+                    }) { Text(stringResource(R.string.remote_type_alibaba)) }
                 }
             },
             confirmButton = { TextButton(onClick = { showAdd = false }) { Text(stringResource(R.string.cancel)) } }

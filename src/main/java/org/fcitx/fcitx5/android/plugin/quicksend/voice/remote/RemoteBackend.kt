@@ -76,6 +76,47 @@ data class StreamingAsrServerBackend(
 }
 
 /**
+ * 阿里云智能语音交互实时语音识别（实时转写，SpeechTranscriber）。
+ * WebSocket 文本协议（header/payload/context）+ 二进制 PCM。
+ * Token 鉴权（通过 URL query 参数），在阿里云控制台获取 AppKey，Token 通过 AK/SK 获取。
+ *
+ * 服务地址默认上海外网：wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1
+ * 支持北京/深圳地域及内网地址。
+ */
+@Serializable
+@SerialName("alibaba-asr")
+data class AlibabaCloudAsrBackend(
+    override val id: String,
+    override val name: String,
+    override val enable: Boolean = false,
+    override val tested: Boolean = false,
+    override val proxy: String = "",
+    /** 服务地址（含 scheme 和路径，不含 token query）。留空=未配置，必填。 */
+    val url: String = "",
+    /** 阿里云控制台项目 AppKey，必填。 */
+    val appKey: String = "",
+    /** 鉴权 Token（通过 AK/SK 调用 Token API 获取），必填。 */
+    val token: String = "",
+    /** 是否返回中间识别结果，默认 true。 */
+    val enableIntermediateResult: Boolean = true,
+    /** 是否添加标点，默认 true。 */
+    val enablePunctuationPrediction: Boolean = true,
+    /** ITN 中文数字转阿拉伯数字，默认 true。 */
+    val enableInverseTextNormalization: Boolean = true,
+    /** 音频采样率（8000/16000），默认 16000。 */
+    val sampleRate: Int = DEFAULT_SAMPLE_RATE,
+) : RemoteBackend {
+    override fun withTested(tested: Boolean): RemoteBackend = copy(tested = tested)
+    override fun withEnable(enable: Boolean): RemoteBackend = copy(enable = enable)
+
+    companion object {
+        /** 阿里云实时语音识别默认服务地址（上海外网）。 */
+        const val DEFAULT_URL = "wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1"
+        internal const val DEFAULT_SAMPLE_RATE = 16000
+    }
+}
+
+/**
  * 腾讯云实时语音识别 V2（WebSocket，wss://asr.cloud.tencent.com/asr/v2/<appid>）。
  * 全部由客户端直连：签名（HMAC-SHA1）在客户端计算。所需参数在此填写，其余用默认。
  *

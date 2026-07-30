@@ -122,6 +122,7 @@
     <string name="remote_type_streaming">streaming-asr-server（自建）</string>
     <string name="remote_type_tencent_v1">tencent-asr-v1（腾讯实时语音识别 V1，通用引擎）</string>
     <string name="remote_type_tencent">tencent-asr-v2（腾讯实时语音识别 V2）</string>
+    <string name="remote_type_alibaba">alibaba-asr（阿里云实时语音识别）</string>
     <string name="remote_field_name">名称</string>
     <string name="remote_field_enable">启用</string>
     <string name="remote_tested_yes">已通过测试</string>
@@ -153,6 +154,17 @@
     <string name="tencent_field_filter_punc">句末标点过滤（0/1，默认 0）</string>
     <string name="tencent_field_convert_num">数字转换（0/1/3，默认 1）</string>
     <string name="tencent_field_hotword">热词表（word|weight,word|weight，可选）</string>
+
+    <!-- alibaba-asr 字段 -->
+    <string name="alibaba_field_url">服务地址（如 wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1）</string>
+    <string name="alibaba_copy_default">复制默认地址（wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1）</string>
+    <string name="alibaba_default_copied">已复制默认地址，粘贴到上方输入框</string>
+    <string name="alibaba_field_appkey">项目 AppKey</string>
+    <string name="alibaba_field_token">鉴权 Token</string>
+    <string name="alibaba_field_sample_rate">采样率（8000/16000，默认 16000）</string>
+    <string name="alibaba_field_intermediate">返回中间结果</string>
+    <string name="alibaba_field_punctuation">添加标点</string>
+    <string name="alibaba_field_itn">中文数字转阿拉伯数字</string>
 
     <!-- 通用：每个远端的代理 -->
     <string name="remote_field_proxy">代理（http://127.0.0.1:7890 或 socks5://host:1080，可选）</string>

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceOverlayService
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.AlibabaCloudAsrBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.StreamingAsrServerBackend
@@ -70,6 +71,7 @@ fun RemoteBackendEditDrawer(
     val streaming = backend as? StreamingAsrServerBackend
     val tencentV2 = backend as? TencentAsrV2Backend
     val tencentV1 = backend as? TencentAsrV1Backend
+    val alibaba = backend as? AlibabaCloudAsrBackend
     // V1/V2 字段同构，取实际后端的值；都没有时按各自默认（仅影响新建瞬时态）
     val tencent: TencentAsrBackend? = tencentV1 ?: tencentV2
 
@@ -77,8 +79,8 @@ fun RemoteBackendEditDrawer(
     var enable by remember(backend.id) { mutableStateOf(backend.enable) }
     var proxy by remember(backend.id) { mutableStateOf(backend.proxy) }
     var baseUrl by remember(backend.id) { mutableStateOf(tencent?.baseUrl ?: "") }
-    var url by remember(backend.id) { mutableStateOf(streaming?.url ?: "") }
-    var token by remember(backend.id) { mutableStateOf(streaming?.token ?: "") }
+    var url by remember(backend.id) { mutableStateOf(streaming?.url ?: alibaba?.url ?: "") }
+    var token by remember(backend.id) { mutableStateOf(streaming?.token ?: alibaba?.token ?: "") }
     var appId by remember(backend.id) { mutableStateOf(tencent?.appId ?: "") }
     var secretId by remember(backend.id) { mutableStateOf(tencent?.secretId ?: "") }
     var secretKey by remember(backend.id) { mutableStateOf(tencent?.secretKey ?: "") }
@@ -92,6 +94,12 @@ fun RemoteBackendEditDrawer(
     var filterPunc by remember(backend.id) { mutableStateOf((tencentV1?.filterPunc ?: 0).toString()) }
     var convertNum by remember(backend.id) { mutableStateOf((tencent?.convertNumMode ?: 1).toString()) }
     var hotword by remember(backend.id) { mutableStateOf(tencent?.hotwordList ?: "") }
+    var appKey by remember(backend.id) { mutableStateOf(alibaba?.appKey ?: "") }
+    var alibabaToken by remember(backend.id) { mutableStateOf(alibaba?.token ?: "") }
+    var alibabaSampleRate by remember(backend.id) { mutableStateOf((alibaba?.sampleRate ?: 16000).toString()) }
+    var alibabaIntermediate by remember(backend.id) { mutableStateOf(alibaba?.enableIntermediateResult ?: true) }
+    var alibabaPunctuation by remember(backend.id) { mutableStateOf(alibaba?.enablePunctuationPrediction ?: true) }
+    var alibabaItn by remember(backend.id) { mutableStateOf(alibaba?.enableInverseTextNormalization ?: true) }
 
     fun buildSaved(): RemoteBackend? = when (backend) {
         is StreamingAsrServerBackend -> {
@@ -137,6 +145,20 @@ fun RemoteBackendEditDrawer(
                 filterPunc = filterPunc.toIntOrNull() ?: 0,
                 convertNumMode = convertNum.toIntOrNull() ?: 1,
                 hotwordList = hotword.trim(),
+            )
+        }
+        is AlibabaCloudAsrBackend -> {
+            if (url.isBlank() || appKey.isBlank() || alibabaToken.isBlank()) null
+            else backend.copy(
+                name = name.trim().ifBlank { "alibaba-asr" },
+                enable = enable, proxy = proxy.trim(),
+                url = url.trim(),
+                appKey = appKey.trim(),
+                token = alibabaToken.trim(),
+                enableIntermediateResult = alibabaIntermediate,
+                enablePunctuationPrediction = alibabaPunctuation,
+                enableInverseTextNormalization = alibabaItn,
+                sampleRate = alibabaSampleRate.toIntOrNull() ?: 16000,
             )
         }
     }
@@ -219,6 +241,48 @@ fun RemoteBackendEditDrawer(
                     OutlinedTextField(value = convertNum, onValueChange = { convertNum = it }, label = { Text(stringResource(R.string.tencent_field_convert_num)) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = hotword, onValueChange = { hotword = it }, label = { Text(stringResource(R.string.tencent_field_hotword)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
+                is AlibabaCloudAsrBackend -> {
+                    OutlinedTextField(
+                        value = url, onValueChange = { url = it },
+                        label = { Text(stringResource(R.string.alibaba_field_url)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    TextButton(onClick = {
+                        clipboard.setText(AnnotatedString(AlibabaCloudAsrBackend.DEFAULT_URL))
+                        toast(context, R.string.alibaba_default_copied)
+                    }) { Text(stringResource(R.string.alibaba_copy_default)) }
+                    OutlinedTextField(
+                        value = appKey, onValueChange = { appKey = it },
+                        label = { Text(stringResource(R.string.alibaba_field_appkey)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = alibabaToken, onValueChange = { alibabaToken = it },
+                        label = { Text(stringResource(R.string.alibaba_field_token)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = alibabaSampleRate, onValueChange = { alibabaSampleRate = it },
+                        label = { Text(stringResource(R.string.alibaba_field_sample_rate)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = alibabaIntermediate, onCheckedChange = { alibabaIntermediate = it })
+                        Text(stringResource(R.string.alibaba_field_intermediate))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = alibabaPunctuation, onCheckedChange = { alibabaPunctuation = it })
+                        Text(stringResource(R.string.alibaba_field_punctuation))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = alibabaItn, onCheckedChange = { alibabaItn = it })
+                        Text(stringResource(R.string.alibaba_field_itn))
+                    }
+                }
             }
 
             OutlinedTextField(
@@ -265,6 +329,7 @@ internal fun typeLabel(backend: RemoteBackend): String = when (backend) {
     is StreamingAsrServerBackend -> "streaming-asr-server"
     is TencentAsrV1Backend -> "tencent-asr-v1"
     is TencentAsrV2Backend -> "tencent-asr-v2"
+    is AlibabaCloudAsrBackend -> "alibaba-asr"
 }
 
 @Composable
