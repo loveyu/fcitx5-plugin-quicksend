@@ -4,6 +4,8 @@
  */
 package org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.alibaba
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -53,20 +55,26 @@ class AlibabaCloudAsrRecognizer(private val config: AlibabaCloudAsrBackend) :
 
     /**
      * 解析 Token：手动填入优先，否则用 AK/SK 自动获取（带内存缓存，过期自动刷新）。
+     *
+     * 网络调用经 [runBlocking] 切到 [Dispatchers.IO]——因为 [buildRequest] 非 suspend 且可能被
+     * 主线程协程调用，直接在主线程同步 HTTP 会触发 NetworkOnMainThreadException。
      */
     private fun resolveToken(): String? {
         if (config.token.isNotBlank()) return config.token
         if (!config.canAutoFetchToken) return null
 
-        // 检查缓存
+        // 检查缓存（未过期直接用，避免不必要请求）
         val cached = cachedToken
         if (cached != null && cached.isValid) {
-            VoiceLog.d(tag, "using cached token, expires at ${cached.expireTime}")
+            VoiceLog.d(tag, "using cached token, expires at ${cached.expireTime} " +
+                "(remaining ${(cached.expireTime - System.currentTimeMillis() / 1000)}s)")
             return cached.id
         }
 
         VoiceLog.i(tag, "auto-fetching token via CreateToken API")
-        val result = AlibabaCreateToken.fetchToken(config.accessKeyId, config.accessKeySecret)
+        val result = runBlocking(Dispatchers.IO) {
+            AlibabaCreateToken.fetchToken(config.accessKeyId, config.accessKeySecret)
+        }
         if (result != null && result.isValid) {
             cachedToken = result
             VoiceLog.i(tag, "token fetched, expires at ${result.expireTime}")

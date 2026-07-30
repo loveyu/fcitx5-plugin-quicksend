@@ -53,13 +53,18 @@ object AlibabaCreateToken {
         val signedUrl = "$TOKEN_API?Signature=${percentEncode(signature)}&$queryString"
 
         return try {
-            val json = java.net.URL(signedUrl).readText()
-            val obj = org.json.JSONObject(json)
-            val tokenObj = obj.optJSONObject("Token") ?: return null
-            val id = tokenObj.optString("Id", "")
-            val expireTime = tokenObj.optLong("ExpireTime", 0)
-            if (id.isEmpty() || expireTime == 0L) null
-            else TokenResult(id, expireTime)
+            val request = okhttp3.Request.Builder().url(signedUrl)
+                .header("Accept", "application/json")
+                .get().build()
+            val response = okhttp3.OkHttpClient().newCall(request).execute()
+            response.body?.use { body ->
+                val obj = org.json.JSONObject(body.string())
+                val tokenObj = obj.optJSONObject("Token") ?: return null
+                val id = tokenObj.optString("Id", "")
+                val expireTime = tokenObj.optLong("ExpireTime", 0)
+                if (id.isEmpty() || expireTime == 0L) null
+                else TokenResult(id, expireTime)
+            }
         } catch (e: Exception) {
             null
         }
