@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceOverlayService
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.AlibabaCloudAsrBackend
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.GlmAsrBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackend
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.StreamingAsrServerBackend
@@ -72,6 +73,7 @@ fun RemoteBackendEditDrawer(
     val tencentV2 = backend as? TencentAsrV2Backend
     val tencentV1 = backend as? TencentAsrV1Backend
     val alibaba = backend as? AlibabaCloudAsrBackend
+    val glm = backend as? GlmAsrBackend
     // V1/V2 字段同构，取实际后端的值；都没有时按各自默认（仅影响新建瞬时态）
     val tencent: TencentAsrBackend? = tencentV1 ?: tencentV2
 
@@ -100,6 +102,9 @@ fun RemoteBackendEditDrawer(
     var alibabaIntermediate by remember(backend.id) { mutableStateOf(alibaba?.enableIntermediateResult ?: true) }
     var alibabaPunctuation by remember(backend.id) { mutableStateOf(alibaba?.enablePunctuationPrediction ?: true) }
     var alibabaItn by remember(backend.id) { mutableStateOf(alibaba?.enableInverseTextNormalization ?: true) }
+    var glmApiKey by remember(backend.id) { mutableStateOf(glm?.apiKey ?: "") }
+    var glmBaseUrl by remember(backend.id) { mutableStateOf(glm?.baseUrl ?: GlmAsrBackend.DEFAULT_BASE_URL) }
+    var glmHotwords by remember(backend.id) { mutableStateOf(glm?.hotwords ?: "") }
 
     fun buildSaved(): RemoteBackend? = when (backend) {
         is StreamingAsrServerBackend -> {
@@ -159,6 +164,16 @@ fun RemoteBackendEditDrawer(
                 enablePunctuationPrediction = alibabaPunctuation,
                 enableInverseTextNormalization = alibabaItn,
                 sampleRate = alibabaSampleRate.toIntOrNull() ?: 16000,
+            )
+        }
+        is GlmAsrBackend -> {
+            if (glmApiKey.isBlank()) null
+            else backend.copy(
+                name = name.trim().ifBlank { "glm-asr" },
+                enable = enable, proxy = proxy.trim(),
+                apiKey = glmApiKey.trim(),
+                baseUrl = glmBaseUrl.trim().ifBlank { GlmAsrBackend.DEFAULT_BASE_URL },
+                hotwords = glmHotwords.trim(),
             )
         }
     }
@@ -283,6 +298,25 @@ fun RemoteBackendEditDrawer(
                         Text(stringResource(R.string.alibaba_field_itn))
                     }
                 }
+                is GlmAsrBackend -> {
+                    OutlinedTextField(
+                        value = glmApiKey, onValueChange = { glmApiKey = it },
+                        label = { Text(stringResource(R.string.glm_field_apikey)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = glmBaseUrl, onValueChange = { glmBaseUrl = it },
+                        label = { Text(stringResource(R.string.glm_field_baseurl)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = glmHotwords, onValueChange = { glmHotwords = it },
+                        label = { Text(stringResource(R.string.glm_field_hotwords)) },
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
             OutlinedTextField(
@@ -330,6 +364,7 @@ internal fun typeLabel(backend: RemoteBackend): String = when (backend) {
     is TencentAsrV1Backend -> "tencent-asr-v1"
     is TencentAsrV2Backend -> "tencent-asr-v2"
     is AlibabaCloudAsrBackend -> "alibaba-asr"
+    is GlmAsrBackend -> "glm-asr"
 }
 
 @Composable

@@ -212,3 +212,34 @@ data class TencentAsrV1Backend(
         internal const val DEFAULT_CONVERT_NUM_MODE = 1
     }
 }
+
+/**
+ * 智谱 GLM-ASR-2512 语音转文本（HTTP REST，multipart/form-data 上传 WAV）。
+ * 文档：https://docs.bigmodel.cn/api-reference/%E6%A8%A1%E5%9E%8B-api/%E8%AF%AD%E9%9F%B3%E8%BD%AC%E6%96%87%E6%9C%AC
+ *
+ * 非 WebSocket 实时流：录音→停止→一次性上传完整音频→服务端通过 SSE（stream=true）
+ * 下发 `transcript.text.delta`（Partial）/ `transcript.text.done`（Final）。
+ * 限制：音频 ≤ 30s / ≤ 25MB，格式 .wav 或 .mp3。
+ */
+@Serializable
+@SerialName("glm-asr")
+data class GlmAsrBackend(
+    override val id: String,
+    override val name: String,
+    override val enable: Boolean = false,
+    override val tested: Boolean = false,
+    override val proxy: String = "",
+    /** API Key（智谱开放平台 → API Keys 页面获取），必填。 */
+    val apiKey: String = "",
+    /** API 地址，默认官方。 */
+    val baseUrl: String = DEFAULT_BASE_URL,
+    /** 热词表，逗号分隔，提升特定领域词汇识别率，建议不超过 100 个。 */
+    val hotwords: String = "",
+) : RemoteBackend {
+    override fun withTested(tested: Boolean): RemoteBackend = copy(tested = tested)
+    override fun withEnable(enable: Boolean): RemoteBackend = copy(enable = enable)
+
+    companion object {
+        const val DEFAULT_BASE_URL = "https://open.bigmodel.cn/api"
+    }
+}

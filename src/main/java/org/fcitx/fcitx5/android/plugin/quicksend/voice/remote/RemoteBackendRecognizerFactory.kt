@@ -6,6 +6,7 @@ package org.fcitx.fcitx5.android.plugin.quicksend.voice.remote
 
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.SpeechRecognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.alibaba.AlibabaCloudAsrRecognizer
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.glm.GlmAsrRecognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.streaming.StreamingAsrServerRecognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.tencent.TencentAsrV1Recognizer
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.tencent.TencentAsrV2Recognizer
@@ -18,4 +19,5 @@ fun RemoteBackend.recognizer(): SpeechRecognizer = when (this) {
     is TencentAsrV1Backend -> TencentAsrV1Recognizer(this)
     is TencentAsrV2Backend -> TencentAsrV2Recognizer(this)
     is AlibabaCloudAsrBackend -> AlibabaCloudAsrRecognizer(this)
+    is GlmAsrBackend -> GlmAsrRecognizer(this)
 }
