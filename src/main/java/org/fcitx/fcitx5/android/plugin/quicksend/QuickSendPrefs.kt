@@ -76,6 +76,9 @@ object QuickSendPrefs {
     const val VOICE_NUM_THREADS = "voice_num_threads"
     const val VOICE_PROVIDER = "voice_provider"
 
+    /** 开启语音聆听时自动暂停后台音视频播放，完成/关闭后恢复。默认关闭。 */
+    const val VOICE_AUTO_PAUSE_MEDIA = "voice_auto_pause_media"
+
     // ===== 远端 ASR =====
 
     /** 远端 ASR 后端列表（JSON 数组，[org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.RemoteBackendStore]）。

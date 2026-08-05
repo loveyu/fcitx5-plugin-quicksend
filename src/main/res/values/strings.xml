@@ -54,6 +54,7 @@
     <!-- 语音输入 -->
     <string name="voice_settings_entry">本地语音输入设置</string>
     <string name="voice_settings_title">本地语音输入</string>
+    <string name="voice_general_section">通用</string>
     <string name="voice_recognition_section">识别参数</string>
     <string name="voice_param_default">默认: %1$s</string>
     <string name="voice_param_recommended">推荐: %1$s</string>
@@ -122,6 +123,8 @@
     <string name="voice_name_joiner">joiner 文件名</string>
     <string name="voice_name_tokens">tokens 文件名</string>
     <string name="voice_usage_hint">使用：在 fcitx5 键盘设置中开启「显示语音输入按钮」，点键盘上的麦克风图标即可启动本地识别。</string>
+    <string name="voice_auto_pause_media">聆听时暂停音视频</string>
+    <string name="voice_auto_pause_media_summary">开启后，开始聆听时自动暂停正在播放的音视频，完成或关闭后恢复播放</string>
     <string name="voice_downloading">下载中 %1$d%%</string>
     <string name="voice_download_failed">下载失败：%1$s</string>
 

@@ -50,6 +50,7 @@ import org.fcitx.fcitx5.android.plugin.quicksend.QuickSendPrefs
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.QuickSendTopBar
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.SectionHeader
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.SettingSwitchRow
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.SettingTextFieldRow
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.theme.QuickSendTheme
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.net.ProxyConfig
@@ -143,6 +144,10 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
 
     val params = remember { mutableStateMapOf<String, String>().also { loadParams(prefs, paramSpecs, it) } }
 
+    var autoPauseMedia by remember {
+        mutableStateOf(prefs.getBoolean(QuickSendPrefs.VOICE_AUTO_PAUSE_MEDIA, false))
+    }
+
     val downloadState by VoiceModelManager.state.collectAsState()
     val nativeState by NativeLibManager.state.collectAsState()
     val needsRestart = remember { mutableStateOf(NativeLibManager.needsRestart(context)) }
@@ -182,6 +187,20 @@ private fun VoiceSettingsScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
+            // —— 通用设置 ——
+            SectionHeader(stringResource(R.string.voice_general_section))
+            SettingSwitchRow(
+                title = stringResource(R.string.voice_auto_pause_media),
+                subtitle = stringResource(R.string.voice_auto_pause_media_summary),
+                checked = autoPauseMedia,
+                onChange = { checked ->
+                    autoPauseMedia = checked
+                    prefs.edit().putBoolean(QuickSendPrefs.VOICE_AUTO_PAUSE_MEDIA, checked).apply()
+                }
+            )
+
+            Spacer(Modifier.height(8.dp))
+
             // —— 识别模型 ——
             SectionHeader(stringResource(R.string.voice_model_section))
             Text(

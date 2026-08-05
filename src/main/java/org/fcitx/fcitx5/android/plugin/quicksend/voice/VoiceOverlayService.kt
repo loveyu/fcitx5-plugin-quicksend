@@ -19,6 +19,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -27,6 +28,7 @@ import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -102,6 +104,9 @@ class VoiceOverlayService : Service() {
     /** 单后端测试模式：从设置页拉起，[testBackend] 之外的判断跳过，final 回写 tested。 */
     private var inTestMode = false
     private var testBackend: RemoteBackend? = null
+
+    /** 聆听时自动暂停音视频：标记是否已暂停，完成/关闭时恢复。 */
+    private var mediaWasPaused = false
 
     private val backendJson = Json { ignoreUnknownKeys = true }
 
@@ -404,7 +409,10 @@ class VoiceOverlayService : Service() {
         controller = ctrl
         collectJob?.cancel()
         collectJob = scope.launch {
-            ctrl.state.collect { runOnUiThread { updateUi(it) } }
+            ctrl.state.collect { state ->
+                runOnUiThread { updateUi(state) }
+                handleMediaAutoPause(state)
+            }
         }
         ctrl.start()
     }
@@ -488,6 +496,42 @@ class VoiceOverlayService : Service() {
             }
             VoiceUiState.NotReady -> showPrompt(getString(R.string.voice_model_not_ready))
         }
+    }
+
+    private fun handleMediaAutoPause(state: VoiceUiState) {
+        val prefs = currentPrefs ?: return
+        if (!prefs.getBoolean(QuickSendPrefs.VOICE_AUTO_PAUSE_MEDIA, false)) return
+        when (state) {
+            VoiceUiState.Listening, is VoiceUiState.Partial, is VoiceUiState.Paused -> {
+                if (!mediaWasPaused) {
+                    val am = getSystemService(AUDIO_SERVICE) as AudioManager
+                    if (am.isMusicActive) {
+                        dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
+                        mediaWasPaused = true
+                    }
+                }
+            }
+            VoiceUiState.Initializing -> { /* 初始化阶段不暂停 */ }
+            VoiceUiState.Finishing, is VoiceUiState.Error -> {
+                if (mediaWasPaused) {
+                    dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
+                    mediaWasPaused = false
+                }
+            }
+            VoiceUiState.Idle, VoiceUiState.NotReady -> {
+                if (mediaWasPaused) {
+                    dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
+                    mediaWasPaused = false
+                }
+            }
+        }
+    }
+
+    private fun dispatchMediaKey(keyCode: Int) {
+        VoiceLog.i(TAG, "auto media key: keyCode=$keyCode")
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
     }
 
     private fun buildStatusText(text: String): CharSequence {
@@ -731,6 +775,10 @@ class VoiceOverlayService : Service() {
 
     override fun onDestroy() {
         VoiceLog.i(TAG, "onDestroy")
+        if (mediaWasPaused) {
+            dispatchMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
+            mediaWasPaused = false
+        }
         runCatching { if (registered) remoteService?.unregisterInputWindowStateListener(inputWindowListener) }
         registered = false
         collectJob?.cancel()
