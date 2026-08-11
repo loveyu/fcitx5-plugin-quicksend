@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -245,6 +246,10 @@ private fun SegmentChip(seg: ContentSegment, onRemove: () -> Unit) {
             .padding(2.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(background)
+            .then(
+                if (isDelay) Modifier.border(1.dp, DelayVisualStyle.Border, RoundedCornerShape(8.dp))
+                else Modifier
+            )
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -274,6 +279,8 @@ private fun DelayPickerDialog(onPick: (Long) -> Unit, onDismiss: () -> Unit) {
     var millis by remember { mutableStateOf("80") }
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = DelayVisualStyle.DialogContainer,
+        titleContentColor = DelayVisualStyle.Content,
         title = { Text(stringResource(R.string.add_delay)) },
         text = {
             Column {
@@ -284,11 +291,32 @@ private fun DelayPickerDialog(onPick: (Long) -> Unit, onDismiss: () -> Unit) {
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.delay_preview_label),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DelayVisualStyle.Content
+                    )
+                    Text(
+                        "{${millis.ifBlank { "..." }}}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DelayVisualStyle.Content,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DelayVisualStyle.Container)
+                            .border(1.dp, DelayVisualStyle.Border, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
                 Text(
                     stringResource(R.string.delay_range),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 6.dp)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(50L, 80L, 100L, 200L).forEach { preset ->

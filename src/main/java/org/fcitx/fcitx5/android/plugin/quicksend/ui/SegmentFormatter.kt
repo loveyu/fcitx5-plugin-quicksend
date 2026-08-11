@@ -3,6 +3,7 @@ package org.fcitx.fcitx5.android.plugin.quicksend.ui
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
 import org.fcitx.fcitx5.android.plugin.quicksend.data.ContentSegment
 import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 
@@ -15,7 +16,8 @@ object SegmentFormatter {
     private const val MAX_LEN = 40
     fun displayLabel(entry: QuickSendEntry): CharSequence {
         val label = entry.label.trim()
-        return if (label.isNotEmpty()) label else formatSegments(entry.segments)
+        if (label.isEmpty()) return formatSegments(entry.segments)
+        return SpannableStringBuilder(label).append("\n").append(formatSegments(entry.segments))
     }
 
     fun formatSegments(segments: List<ContentSegment>): CharSequence {
@@ -32,7 +34,8 @@ object SegmentFormatter {
                     val delay = ContentSegment.delayMillis(seg.content) ?: continue
                     val start = sb.length
                     sb.append("{$delay}")
-                    sb.setSpan(BackgroundColorSpan(0x336F7D00), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sb.setSpan(BackgroundColorSpan(0xFFFFE8B6.toInt()), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sb.setSpan(ForegroundColorSpan(0xFF6A4300.toInt()), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 else -> sb.append(seg.content)
             }

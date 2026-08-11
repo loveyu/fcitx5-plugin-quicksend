@@ -53,6 +53,7 @@
     <string name="add_delay">添加延迟</string>
     <string name="delay_millis">延迟（毫秒）</string>
     <string name="delay_range">请输入 1 到 5000 的毫秒数</string>
+    <string name="delay_preview_label">将插入：</string>
 
     <!-- 语音输入 -->
     <string name="voice_settings_entry">本地语音输入设置</string>

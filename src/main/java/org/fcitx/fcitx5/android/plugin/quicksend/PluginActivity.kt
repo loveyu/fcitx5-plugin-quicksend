@@ -12,10 +12,15 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,7 +55,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -58,9 +63,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.plugin.quicksend.data.QuickSendManager
+import org.fcitx.fcitx5.android.plugin.quicksend.data.ContentSegment
 import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 import org.fcitx.fcitx5.android.plugin.quicksend.log.LogSettingsActivity
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.EditEntrySheet
+import org.fcitx.fcitx5.android.plugin.quicksend.ui.DelayVisualStyle
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.SegmentFormatter
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.QuickSendTopBar
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.SettingSwitchRow
@@ -277,6 +284,7 @@ private fun PluginScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EntryCard(
     entry: QuickSendEntry,
@@ -302,12 +310,10 @@ private fun EntryCard(
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    SegmentFormatter.displayLabel(entry).toString(),
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                entry.label.trim().takeIf { it.isNotEmpty() }?.let { label ->
+                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                }
+                SegmentPreview(entry.segments)
                 Text(
                     "×${entry.useCount}",
                     style = MaterialTheme.typography.labelSmall,
@@ -320,4 +326,57 @@ private fun EntryCard(
             }
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SegmentPreview(segments: List<ContentSegment>) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        segments.forEach { segment ->
+            when (segment.type) {
+                ContentSegment.TYPE_KEY -> PreviewToken(
+                    text = "[${segment.content}]",
+                    background = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                ContentSegment.TYPE_DELAY -> ContentSegment.delayMillis(segment.content)?.let { delay ->
+                    PreviewToken(
+                        text = "{$delay}",
+                        background = DelayVisualStyle.Container,
+                        contentColor = DelayVisualStyle.Content,
+                        border = true
+                    )
+                }
+                else -> Text(
+                    text = segment.content,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewToken(
+    text: String,
+    background: androidx.compose.ui.graphics.Color,
+    contentColor: androidx.compose.ui.graphics.Color,
+    border: Boolean = false
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = contentColor,
+        modifier = Modifier
+            .padding(vertical = 2.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(background)
+            .then(
+                if (border) Modifier.border(1.dp, DelayVisualStyle.Border, RoundedCornerShape(6.dp))
+                else Modifier
+            )
+            .padding(horizontal = 6.dp, vertical = 3.dp)
+    )
 }
