@@ -231,14 +231,15 @@ fun EditEntrySheet(entry: QuickSendEntry?, onDismiss: () -> Unit) {
 private fun SegmentChip(seg: ContentSegment, onRemove: () -> Unit) {
     val isKey = seg.type == ContentSegment.TYPE_KEY
     val isDelay = seg.type == ContentSegment.TYPE_DELAY
+    val delayColors = DelayVisualStyle.colors()
     val background = when {
         isKey -> MaterialTheme.colorScheme.secondaryContainer
-        isDelay -> MaterialTheme.colorScheme.tertiaryContainer
+        isDelay -> delayColors.container
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val contentColor = when {
         isKey -> MaterialTheme.colorScheme.onSecondaryContainer
-        isDelay -> MaterialTheme.colorScheme.onTertiaryContainer
+        isDelay -> delayColors.content
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     Row(
@@ -247,7 +248,7 @@ private fun SegmentChip(seg: ContentSegment, onRemove: () -> Unit) {
             .clip(RoundedCornerShape(8.dp))
             .background(background)
             .then(
-                if (isDelay) Modifier.border(1.dp, DelayVisualStyle.Border, RoundedCornerShape(8.dp))
+                if (isDelay) Modifier.border(1.dp, delayColors.border, RoundedCornerShape(8.dp))
                 else Modifier
             )
             .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -276,11 +277,12 @@ private fun SegmentChip(seg: ContentSegment, onRemove: () -> Unit) {
 @Composable
 private fun DelayPickerDialog(onPick: (Long) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val delayColors = DelayVisualStyle.colors()
     var millis by remember { mutableStateOf("80") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = DelayVisualStyle.DialogContainer,
-        titleContentColor = DelayVisualStyle.Content,
+        containerColor = delayColors.dialogContainer,
+        titleContentColor = delayColors.content,
         title = { Text(stringResource(R.string.add_delay)) },
         text = {
             Column {
@@ -298,17 +300,17 @@ private fun DelayPickerDialog(onPick: (Long) -> Unit, onDismiss: () -> Unit) {
                     Text(
                         stringResource(R.string.delay_preview_label),
                         style = MaterialTheme.typography.bodySmall,
-                        color = DelayVisualStyle.Content
+                        color = delayColors.content
                     )
                     Text(
                         "{${millis.ifBlank { "..." }}}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = DelayVisualStyle.Content,
+                        color = delayColors.content,
                         modifier = Modifier
                             .padding(start = 4.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(DelayVisualStyle.Container)
-                            .border(1.dp, DelayVisualStyle.Border, RoundedCornerShape(8.dp))
+                            .background(delayColors.container)
+                            .border(1.dp, delayColors.border, RoundedCornerShape(8.dp))
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }

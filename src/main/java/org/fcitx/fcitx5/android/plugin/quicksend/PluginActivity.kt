@@ -68,7 +68,6 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 import org.fcitx.fcitx5.android.plugin.quicksend.log.LogSettingsActivity
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.EditEntrySheet
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.DelayVisualStyle
-import org.fcitx.fcitx5.android.plugin.quicksend.ui.SegmentFormatter
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.QuickSendTopBar
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.SettingSwitchRow
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.theme.QuickSendTheme
@@ -331,6 +330,7 @@ private fun EntryCard(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SegmentPreview(segments: List<ContentSegment>) {
+    val delayColors = DelayVisualStyle.colors()
     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         segments.forEach { segment ->
             when (segment.type) {
@@ -342,9 +342,9 @@ private fun SegmentPreview(segments: List<ContentSegment>) {
                 ContentSegment.TYPE_DELAY -> ContentSegment.delayMillis(segment.content)?.let { delay ->
                     PreviewToken(
                         text = "{$delay}",
-                        background = DelayVisualStyle.Container,
-                        contentColor = DelayVisualStyle.Content,
-                        border = true
+                        background = delayColors.container,
+                        contentColor = delayColors.content,
+                        borderColor = delayColors.border
                     )
                 }
                 else -> Text(
@@ -363,7 +363,7 @@ private fun PreviewToken(
     text: String,
     background: androidx.compose.ui.graphics.Color,
     contentColor: androidx.compose.ui.graphics.Color,
-    border: Boolean = false
+    borderColor: androidx.compose.ui.graphics.Color? = null
 ) {
     Text(
         text = text,
@@ -374,7 +374,7 @@ private fun PreviewToken(
             .clip(RoundedCornerShape(6.dp))
             .background(background)
             .then(
-                if (border) Modifier.border(1.dp, DelayVisualStyle.Border, RoundedCornerShape(6.dp))
+                if (borderColor != null) Modifier.border(1.dp, borderColor, RoundedCornerShape(6.dp))
                 else Modifier
             )
             .padding(horizontal = 6.dp, vertical = 3.dp)

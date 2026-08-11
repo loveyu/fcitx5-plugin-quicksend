@@ -6,12 +6,12 @@ package org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.alibaba
 
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
-import java.util.Base64
 import java.util.Date
 import java.util.SimpleTimeZone
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import org.fcitx.fcitx5.android.plugin.quicksend.voice.remote.Rfc4648Base64
 
 /**
  * 阿里云智能语音交互 Token 获取（POP 协议 CreateToken API）。
@@ -87,7 +87,7 @@ object AlibabaCreateToken {
     internal fun hmacSha1Base64(data: String, key: String): String {
         val mac = Mac.getInstance(ALGORITHM)
         mac.init(SecretKeySpec(key.toByteArray(Charsets.UTF_8), ALGORITHM))
-        return Base64.getEncoder().encodeToString(mac.doFinal(data.toByteArray(Charsets.UTF_8)))
+        return Rfc4648Base64.encode(mac.doFinal(data.toByteArray(Charsets.UTF_8)))
     }
 
     internal fun iso8601Utc(): String {

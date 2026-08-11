@@ -33,4 +33,10 @@
     <color name="qs_key_chip_bg">#33808080</color>
     <color name="qs_key_chip_stroke">#888888</color>
 
+    <!-- 延迟段琥珀色语义样式；night 目录必须提供对应深色值 -->
+    <color name="qs_delay_container">#FFE8B6</color>
+    <color name="qs_delay_content">#6A4300</color>
+    <color name="qs_delay_border">#CC9200</color>
+    <color name="qs_delay_dialog_container">#FFF8EA</color>
+
 </resources>

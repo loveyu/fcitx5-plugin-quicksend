@@ -430,7 +430,7 @@ class QuickSendOverlayService : android.app.Service() {
         ) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val tv = super.getView(position, convertView, parent) as TextView
-                getItem(position)?.let { tv.text = SegmentFormatter.displayLabel(it) }
+                getItem(position)?.let { tv.text = SegmentFormatter.displayLabel(context, it) }
                 tv.setPadding(dp(12), dp(10), dp(12), dp(10))
                 tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 tv.setTextColor(resolveColor(R.color.qs_text_primary))

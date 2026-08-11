@@ -29,6 +29,9 @@ fun runGitCmd(vararg args: String): String = try {
 fun gitTagName(): String =
     runGitCmd("describe", "--tags", "--abbrev=0").removePrefix("v")
 
+/** tag / 环境变量版本号统一去掉可选的 v 前缀，Android versionName 只保留语义化版本。 */
+fun normalizeVersionName(version: String): String = version.trim().removePrefix("v")
+
 fun gitCommitCount(): Int =
     runGitCmd("rev-list", "--count", "HEAD").toIntOrNull() ?: 0
 
@@ -78,7 +81,7 @@ android {
         minSdk = 24
         targetSdk = 35
         val tagName = gitTagName()
-        val envVersionName = System.getenv("PLUGIN_VERSION")
+        val envVersionName = System.getenv("PLUGIN_VERSION")?.takeIf { it.isNotBlank() }?.let(::normalizeVersionName)
         val envVersionCode = System.getenv("PLUGIN_VERSION_CODE")
         versionName = envVersionName ?: tagName.ifBlank { "0.0.0-dev" }
         versionCode = envVersionCode?.toIntOrNull()

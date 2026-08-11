@@ -23,4 +23,10 @@
     <color name="qs_accent">#64B5F6</color>
     <color name="qs_danger">#EF5350</color>
 
+    <!-- 深色界面中的延迟段琥珀色语义样式 -->
+    <color name="qs_delay_container">#554312</color>
+    <color name="qs_delay_content">#FFE0A3</color>
+    <color name="qs_delay_border">#D6A83F</color>
+    <color name="qs_delay_dialog_container">#2A2319</color>
+
 </resources>

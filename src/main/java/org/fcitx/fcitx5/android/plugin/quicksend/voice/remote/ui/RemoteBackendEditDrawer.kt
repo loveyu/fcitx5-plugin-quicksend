@@ -39,6 +39,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.voice.VoiceOverlayService
@@ -203,7 +204,8 @@ fun RemoteBackendEditDrawer(
         // 先 upsert（保证 tested 能按 id 回写），再拉起测试浮层
         onSave(saved)
         val json = RemoteBackendStore.encode(saved)
-        context.startForegroundService(
+        ContextCompat.startForegroundService(
+            context,
             Intent(context, VoiceOverlayService::class.java)
                 .setAction(VoiceOverlayService.ACTION_START)
                 .putExtra(VoiceOverlayService.EXTRA_TEST_MODE, true)

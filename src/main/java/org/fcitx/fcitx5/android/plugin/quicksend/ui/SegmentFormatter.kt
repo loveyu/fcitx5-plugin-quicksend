@@ -1,9 +1,11 @@
 package org.fcitx.fcitx5.android.plugin.quicksend.ui
 
+import android.content.Context
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
+import org.fcitx.fcitx5.android.plugin.quicksend.R
 import org.fcitx.fcitx5.android.plugin.quicksend.data.ContentSegment
 import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 
@@ -14,14 +16,16 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 object SegmentFormatter {
 
     private const val MAX_LEN = 40
-    fun displayLabel(entry: QuickSendEntry): CharSequence {
+    fun displayLabel(context: Context, entry: QuickSendEntry): CharSequence {
         val label = entry.label.trim()
-        if (label.isEmpty()) return formatSegments(entry.segments)
-        return SpannableStringBuilder(label).append("\n").append(formatSegments(entry.segments))
+        if (label.isEmpty()) return formatSegments(context, entry.segments)
+        return SpannableStringBuilder(label).append("\n").append(formatSegments(context, entry.segments))
     }
 
-    fun formatSegments(segments: List<ContentSegment>): CharSequence {
+    fun formatSegments(context: Context, segments: List<ContentSegment>): CharSequence {
         val sb = SpannableStringBuilder()
+        val delayContainer = context.getColor(R.color.qs_delay_container)
+        val delayContent = context.getColor(R.color.qs_delay_content)
         for (seg in segments) {
             if (sb.isNotEmpty()) sb.append(" ")
             when (seg.type) {
@@ -34,8 +38,8 @@ object SegmentFormatter {
                     val delay = ContentSegment.delayMillis(seg.content) ?: continue
                     val start = sb.length
                     sb.append("{$delay}")
-                    sb.setSpan(BackgroundColorSpan(0xFFFFE8B6.toInt()), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    sb.setSpan(ForegroundColorSpan(0xFF6A4300.toInt()), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sb.setSpan(BackgroundColorSpan(delayContainer), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sb.setSpan(ForegroundColorSpan(delayContent), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 else -> sb.append(seg.content)
             }

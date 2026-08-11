@@ -77,6 +77,8 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 ## 6. 协作规范（AI 写代码 / 文档时遵守）
 
 - **代码风格**：注释用**中文**；协程 + `StateFlow` 驱动 UI；跨进程序列化用 `kotlinx.serialization`；IPC 调用切 `Dispatchers.IO`（host 端可能派发到 IMS 主线程阻塞）。
+- **minSdk 兼容检查**：项目 `minSdk=24`；Android 主代码新增 API 调用前必须核对最低版本，高版本调用需使用 AndroidX compat API 或显式 `SDK_INT` 分支。提交前检查 lint 报告是否仍有 `severity=Error`；`lint.abortOnError=false` 时任务退出码成功不代表报告零错误。
 - **技术栈约束**：Kotlin `2.2.x` / AGP `9.x` / Gradle `9.x` / KSP / Room；**JDK 17+** 运行 Gradle，字节码 Java 11。**所有页面与弹窗用 Jetpack Compose + Material3**（`org.jetbrains.kotlin.plugin.compose` 插件 + Compose BOM），共用 `ui/theme/QuickSendTheme`（随系统深色模式）与 `ui/components/`（`QuickSendTopBar` 图标返回、`SettingSwitchRow`、`SettingTextFieldRow`、`SectionHeader`、`HelpIconButton`）；新增页面照此模板（`ComponentActivity` + `setContent { QuickSendTheme { XxxScreen(onBack={finish()}) } }`）。仅两个悬浮模块仍是编程式 View（WindowManager overlay，非页面）。无 XML 布局、无 ViewBinding、无 instrumentation 测试。
+- **亮/暗模式检查（新增或修改 UI 必做）**：颜色优先使用 `MaterialTheme.colorScheme`；确需自定义语义色时，必须在 `res/values/colors.xml` 与 `res/values-night/colors.xml` 中以**同名资源成对定义**，并从共享样式入口引用，禁止在页面、抽屉、弹窗、菜单或芯片调用点新增固定浅色 `Color(0x...)`。交付前分别在亮色、暗色下检查本次涉及的完整交互链，至少覆盖容器、标题/正文、输入框、按钮、图标、边框及禁用/错误状态；编程式 View 悬浮窗同样只能读取日夜资源。
 - **文档单一权威**：每个技术主题一处权威，其它文档**交叉引用**而非复制；改「清单型」内容必须同步对应 docs——新增/修复坑 → [tech-debt.md](tech-debt.md)；IPC/组件变更 → [architecture.md](architecture.md)；语音变更 → [voice-subsystem.md](voice-subsystem.md)；构建/签名/CI 变更 → [build-and-release.md](build-and-release.md)。
 - **改动前先确认**：任何改文件/系统的操作先说明意图，获同意再动手（见 [CLAUDE.md](../CLAUDE.md)）。

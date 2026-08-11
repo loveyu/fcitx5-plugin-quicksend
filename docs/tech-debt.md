@@ -48,6 +48,29 @@
 - **参考**：commit `25b6118`。
 - **⚠️ 若将来要重新启用混淆**：必须为 Sherpa-ONNX（及 `com.k2fsa.sherpa.onnx.*`）添加完整的 keep 规则并验证本地识别可用，否则必崩。
 
+### 6. 延迟弹窗固定浅色 → 自定义语义色补齐日夜资源
+
+- **现象**：暗色模式打开「添加延迟」弹窗时仍显示浅色琥珀背景；同批新增的延迟芯片、主页预览和悬浮列表也使用了固定浅色值。
+- **根因**：自定义 `DelayVisualStyle` 直接使用 `Color(0x...)`，绕过了 `QuickSendTheme` 和 Android `values-night` 资源限定符；仅把页面包进 Material3 主题并不能自动转换硬编码颜色。
+- **处理**：延迟容器、文字、边框和弹窗底色改为 `values/colors.xml` / `values-night/colors.xml` 成对语义资源；Compose 经 `DelayVisualStyle.colors()` 读取，View 悬浮列表经 `Context.getColor()` 读取。
+- **位置**：`DelayVisualStyle`、`EditEntrySheet.DelayPickerDialog` / `SegmentChip`、`PluginActivity.SegmentPreview`、`SegmentFormatter`。
+- **防遗漏**：新增或修改 UI 必须按 [ai-dev-playbook.md](ai-dev-playbook.md) §6 的亮/暗模式清单检查；自定义语义色禁止只提供单套固定浅色值。
+
+### 7. API 26 调用遗漏 → 补齐 minSdk 24 兼容
+
+- **现象**：Android lint 报告阿里云签名使用 `java.util.Base64`、远端后端测试直接调用 `Context.startForegroundService`，两者都要求 API 26，而项目 `minSdk=24`。
+- **根因**：纯 JVM 测试环境可用的 JDK API 被直接带入 Android 主代码；前台服务启动只验证了新系统路径，未覆盖 API 24/25。
+- **处理**：抽出纯 JVM `Rfc4648Base64` 供腾讯/阿里云签名共用，并以 JDK 实现对拍各种补位和二进制输入；服务启动改用 `ContextCompat.startForegroundService`，由 AndroidX 在低版本回落到 `startService`。
+- **位置**：`Rfc4648Base64`、`AlibabaCreateToken`、`TencentV2Signing`、`RemoteBackendEditDrawer.startTest`。
+- **防遗漏**：新增 Android 主代码不得直接使用高于 minSdk 的 API；提交前除编译和单测外，还需检查 lint 报告中 `severity=Error` 的数量，不能仅依据 `lintDebug` 退出码（当前配置 `abortOnError=false`）。
+
+### 8. CI 版本环境变量保留 `v` 前缀 → APK 版本名归一化
+
+- **现象**：`v0.11.1` Release 的 APK 内部 `versionName` 为 `v0.11.1`，与项目约定的 `0.11.1` 不一致。
+- **根因**：CI 将 `github.ref_name` 原样赋给 `PLUGIN_VERSION`，`defaultConfig.versionName` 又直接采用该环境变量，绕过了 `gitTagName()` 的去前缀逻辑。
+- **处理**：环境变量版本也统一经 `normalizeVersionName()` 去掉可选 `v` 前缀；发布后使用 `aapt dump badging` 核验 APK 内部 `versionName` / `versionCode`。
+- **位置**：`build.gradle.kts`、[build-and-release.md](build-and-release.md) §版本号。
+
 ## 设计权衡（非 bug，改动前需知晓）
 
 - **三路独立绑定 host**：`MainService` 反向绑定（填 `RemoteServiceHolder`）+ `QuickSendOverlayService` / `VoiceOverlayService` 各自绑定。代价是三处 `bindService` 逻辑重复；收益是插件 APK 更新后 host 尚未重连 `MainService` 时，悬浮按钮 / 语音仍可用各自连接。不要为「去重」合并它们。
@@ -61,7 +84,7 @@
 - **远端失败默认不静默回退**（鉴权/满载）：用「明确提示」换「用户感知」，避免误以为本地正常。
 - **全应用 Compose（悬浮窗除外）**：所有页面与弹窗（主页、本地语音设置、外观、日志、远端语音识别、编辑条目抽屉、颜色选择器）均已迁移到 Jetpack Compose + Material3，共用 `ui/theme/QuickSendTheme`（随系统深色模式）与 `ui/components/`（`QuickSendTopBar` 统一图标返回等）。仅两个悬浮模块（`QuickSendOverlayService`/`VoiceOverlayService`，WindowManager overlay）仍是编程式 View——它们不是「页面」且需直接操作窗口，保持 View 实现不动。代价是悬浮窗与页面两套 UI 栈并存；收益是页面层观感统一、亮/暗模式一致、无 XML/ViewBinding 维护负担。旧的 `QuickSendAdapter`/`FlowLayout`/`KeyPicker`/`ColorPickerDialog`/`OverlayButtonRenderer` 及全部布局 XML 已删除。
 - **拖拽排序原生实现**：远端列表用 `detectDragGesturesAfterLongPress` + 固定行高 + `graphicsLayer` 位移自实现，不引入第三方 reorderable 库。代价是无自动滚动（后端数量少，可接受）；收益是零新增依赖、镜像源不受影响。
-- **腾讯签名自带 Base64**：`TencentV2Signing` 自带 RFC4648 base64 而非用 `android.util.Base64`（minSdk 24）/`java.util.Base64`（API 26）。代价是多 ~20 行代码；收益是纯 JVM 可单测、避开两个 Base64 的 API 版本两难。
+- **远端签名共用 Base64**：`Rfc4648Base64` 提供纯 JVM RFC 4648 编码，腾讯与阿里云签名共用；不依赖 `android.util.Base64`，也避免 Android 主代码调用 API 26 才可用的 `java.util.Base64`，并可继续用纯 JVM 单测对拍。
 
 ## 已知待办 / 待观察
 

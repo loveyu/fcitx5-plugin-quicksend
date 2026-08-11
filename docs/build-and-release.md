@@ -58,10 +58,12 @@ CI（`.github/workflows/build.yml`）的 `Replace mirror sources` 步骤做这�
 
 - `versionName` = 最近的 git tag（去掉前缀 `v`），即 `git describe --tags --abbrev=0`，如 tag `v0.9.0` → `0.9.0`；无 tag 时兜底 `0.0.0-dev`。
 - `versionCode` = 由 tag 的语义化版本换算：`9_000_000 + major*100_000 + minor*1_000 + patch`（基址 9_000_000 保证单调且高于历史手工码 1_000_0xx）。如 `0.9.0` → `9009000`、`0.8.18` → `9008018`。
-- 环境变量覆盖（CI 用）：`PLUGIN_VERSION`（versionName）、`PLUGIN_VERSION_CODE`（versionCode）优先级最高。
+- 环境变量覆盖（CI 用）：`PLUGIN_VERSION`（versionName，允许传 `v0.11.2`，写入 APK 前会去掉 `v`）、`PLUGIN_VERSION_CODE`（versionCode）优先级最高。
 - 解析失败兜底：`1_000_000 + 提交数`。
 
 实现见 `build.gradle.kts` 顶部 `gitTagName()` / `tagToVersionCode()` 等。发版流程：打 tag（如 `git tag v0.9.0 && git push origin v0.9.0`）→ CI 在该 tag 上构建，versionName/versionCode 即由 tag 决定，无需手动改任何文件。
+
+发布完成后需下载 APK 核对元数据：`versionName` 不带 `v`，`versionCode` 与换算公式一致；不能只根据 Release 页面标签判断 APK 内部版本。
 
 
 ## CI（`.github/workflows/build.yml`）
