@@ -9,7 +9,7 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.ContentSegment
  *
  * @property label 显示名称（选填），为空时列表按 [segments] 渲染
  * @property segments 内容段列表（JSON 存储）
- * @property sendMode 0=一起发送(COMBINATION), 1=单个发送(SEQUENCE)
+ * @property sendMode 0=组合键序列(COMBINATION), 1=文本与按键序列(SEQUENCE)
  * @property useCount 使用次数（排序权重）
  */
 @Entity(tableName = "quicksend")

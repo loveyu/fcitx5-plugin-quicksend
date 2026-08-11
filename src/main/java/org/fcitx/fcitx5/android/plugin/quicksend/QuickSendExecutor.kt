@@ -2,6 +2,7 @@ package org.fcitx.fcitx5.android.plugin.quicksend
 
 import android.util.Log
 import android.view.KeyEvent
+import kotlinx.coroutines.delay
 import org.fcitx.fcitx5.android.common.ipc.IQuickSendService
 import org.fcitx.fcitx5.android.plugin.quicksend.data.QuickSendManager
 import org.fcitx.fcitx5.android.plugin.quicksend.data.SendAction
@@ -41,14 +42,14 @@ object QuickSendExecutor {
         return ok
     }
 
-    private fun executeActions(actions: List<SendAction>, remote: IQuickSendService?): Boolean {
+    private suspend fun executeActions(actions: List<SendAction>, remote: IQuickSendService?): Boolean {
         if (remote == null) {
             Log.w(TAG, "Remote service not connected")
             return false
         }
         return try {
             for (action in actions) {
-                when (action) {
+                val sent = when (action) {
                     is SendAction.KeyCombination -> {
                         val (alt, ctrl, shift, meta) = decodeModifiers(action.modifiers)
                         remote.sendKeyCombination(action.mainKey, alt, ctrl, shift, meta)
@@ -59,6 +60,14 @@ object QuickSendExecutor {
                     is SendAction.Text -> {
                         remote.commitText(action.text, -1)
                     }
+                    is SendAction.Delay -> {
+                        delay(action.millis)
+                        true
+                    }
+                }
+                if (!sent) {
+                    Log.w(TAG, "Host rejected ${action.javaClass.simpleName}")
+                    return false
                 }
             }
             true

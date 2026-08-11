@@ -57,7 +57,7 @@ import org.fcitx.fcitx5.android.plugin.quicksend.data.db.QuickSendEntry
 import org.fcitx.fcitx5.android.plugin.quicksend.ui.components.SectionHeader
 
 /**
- * 条目编辑底部抽屉：label / 内容段（文本 + 特殊键，FlowRow 芯片）/ 发送模式 / 使用次数。
+ * 条目编辑底部抽屉：label / 内容段（文本、特殊键、延迟，FlowRow 芯片）/ 发送模式 / 使用次数。
  * 新建时 [entry] = null；编辑时传入已有条目。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -75,6 +75,7 @@ fun EditEntrySheet(entry: QuickSendEntry?, onDismiss: () -> Unit) {
     var useCount by remember { mutableStateOf(entry?.useCount?.toString() ?: "") }
     var textInput by remember { mutableStateOf("") }
     var showKeyPicker by remember { mutableStateOf(false) }
+    var showDelayPicker by remember { mutableStateOf(false) }
 
     fun close() {
         scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
@@ -178,6 +179,9 @@ fun EditEntrySheet(entry: QuickSendEntry?, onDismiss: () -> Unit) {
             TextButton(onClick = { showKeyPicker = true }) {
                 Text(stringResource(R.string.add_special_key))
             }
+            TextButton(onClick = { showDelayPicker = true }) {
+                Text(stringResource(R.string.add_delay))
+            }
 
             SectionHeader(stringResource(R.string.send_mode))
             ModeRadioRow(
@@ -211,26 +215,47 @@ fun EditEntrySheet(entry: QuickSendEntry?, onDismiss: () -> Unit) {
             onDismiss = { showKeyPicker = false }
         )
     }
+    if (showDelayPicker) {
+        DelayPickerDialog(
+            onPick = { millis ->
+                segments.add(ContentSegment(ContentSegment.TYPE_DELAY, millis.toString()))
+                showDelayPicker = false
+            },
+            onDismiss = { showDelayPicker = false }
+        )
+    }
 }
 
 @Composable
 private fun SegmentChip(seg: ContentSegment, onRemove: () -> Unit) {
     val isKey = seg.type == ContentSegment.TYPE_KEY
+    val isDelay = seg.type == ContentSegment.TYPE_DELAY
+    val background = when {
+        isKey -> MaterialTheme.colorScheme.secondaryContainer
+        isDelay -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = when {
+        isKey -> MaterialTheme.colorScheme.onSecondaryContainer
+        isDelay -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Row(
         modifier = Modifier
             .padding(2.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(
-                if (isKey) MaterialTheme.colorScheme.secondaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant
-            )
+            .background(background)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            if (isKey) "[${seg.content}]" else seg.content,
+            when {
+                isKey -> "[${seg.content}]"
+                isDelay -> "{${seg.content}}"
+                else -> seg.content
+            },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
+            color = contentColor
         )
         Spacer(Modifier.width(6.dp))
         Text(
@@ -240,6 +265,52 @@ private fun SegmentChip(seg: ContentSegment, onRemove: () -> Unit) {
             modifier = Modifier.clickable { onRemove() }
         )
     }
+}
+
+/** 创建延迟段；普通文本中的花括号不会被解析成延迟。 */
+@Composable
+private fun DelayPickerDialog(onPick: (Long) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var millis by remember { mutableStateOf("80") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.add_delay)) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = millis,
+                    onValueChange = { millis = it.filter(Char::isDigit).take(4) },
+                    label = { Text(stringResource(R.string.delay_millis)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                Text(
+                    stringResource(R.string.delay_range),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf(50L, 80L, 100L, 200L).forEach { preset ->
+                        TextButton(onClick = { onPick(preset) }) { Text("$preset ms") }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val value = ContentSegment.delayMillis(millis)
+                if (value == null) {
+                    Toast.makeText(context, R.string.delay_range, Toast.LENGTH_SHORT).show()
+                } else {
+                    onPick(value)
+                }
+            }) { Text(stringResource(R.string.confirm)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        }
+    )
 }
 
 @Composable

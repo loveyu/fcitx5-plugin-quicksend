@@ -41,15 +41,18 @@
     <string name="more">更多</string>
     <string name="overlay_permission_rationale">需要“显示在其他应用上层”权限才能显示悬浮按钮，正在跳转授权…</string>
     <string name="send_mode">发送模式</string>
-    <string name="mode_combination">一起发送（组合键）</string>
-    <string name="mode_sequence">单个发送（序列）</string>
+    <string name="mode_combination">组合键序列</string>
+    <string name="mode_sequence">文本与按键序列</string>
     <string name="use_count">使用次数</string>
     <string name="save">保存</string>
     <string name="cancel">取消</string>
 
     <!-- 模式图标无障碍 -->
-    <string name="mode_combination_desc">组合键模式</string>
-    <string name="mode_sequence_desc">序列模式</string>
+    <string name="mode_combination_desc">组合键序列模式</string>
+    <string name="mode_sequence_desc">文本与按键序列模式</string>
+    <string name="add_delay">添加延迟</string>
+    <string name="delay_millis">延迟（毫秒）</string>
+    <string name="delay_range">请输入 1 到 5000 的毫秒数</string>
 
     <!-- 语音输入 -->
     <string name="voice_settings_entry">本地语音输入设置</string>

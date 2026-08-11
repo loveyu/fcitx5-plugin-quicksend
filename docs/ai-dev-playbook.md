@@ -60,8 +60,8 @@ fcitx5-android 的**独立插件 APK**（不是主项目模块），通过 AIDL 
 
 ## 4. 数据层与发送链路速查
 
-- 实体 `QuickSendEntry`（表 `quicksend`）：`id/label/segments/sendMode/useCount/...`；`sendMode`：`COMBINATION=0`（组合键一起发）/ `SEQUENCE=1`（逐键/逐字符顺序发）。
-- `segments: List<ContentSegment(type, content)>`：`TYPE_TEXT=0` / `TYPE_KEY=1`（大写规范化键名如 `CTRL`）；经 `kotlinx.serialization` JSON 存库（`QuickSendConverters`）。
+- 实体 `QuickSendEntry`（表 `quicksend`）：`id/label/segments/sendMode/useCount/...`；`sendMode`：`COMBINATION=0`（组合键序列）/ `SEQUENCE=1`（文本与按键序列）。
+- `segments: List<ContentSegment(type, content)>`：`TYPE_TEXT=0` / `TYPE_KEY=1`（大写规范化键名如 `CTRL`）/ `TYPE_DELAY=2`（毫秒数，范围 1-5000）；经 `kotlinx.serialization` JSON 存库（`QuickSendConverters`）。
 - **发送链路**：`entry.segments → SendActionBuilder.build()`（纯算法）→ `QuickSendExecutor.execute()` → `IQuickSendService` IPC → 成功后 `incrementUse`。
 - **上限 500 条**，`QuickSendManager` 暴露 `StateFlow<List<QuickSendEntry>>`，写后 `reload()`。
 - **键名 ↔ KEYCODE 全表**在 `KeyNameMapping.kt` 代码内（含修饰键/控制键/导航键/功能键/符号键/数字键盘/字母数字七大类与别名），查表直接看该文件。

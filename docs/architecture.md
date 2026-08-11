@@ -60,8 +60,8 @@ bindService(.plugin.SERVICE, perm.PLUGIN) ──▶ MainService.onBind()
 ## 数据层（QuickSend）
 
 - 实体 `QuickSendEntry`（表 `quicksend`）：`id/label/segments/sendMode/useCount/createdAt/updatedAt`。
-  - `sendMode`：`MODE_COMBINATION=0`（一起发送）/`MODE_SEQUENCE=1`（单个发送）。
-  - `segments: List<ContentSegment>`，`ContentSegment(type, content)`：`TYPE_TEXT=0`（原文）/`TYPE_KEY=1`（大写规范化键名，如 `CTRL`）。`type=2/3` 预留。
+- `sendMode`：`MODE_COMBINATION=0`（组合键序列）/`MODE_SEQUENCE=1`（文本与按键序列）。
+  - `segments: List<ContentSegment>`，`ContentSegment(type, content)`：`TYPE_TEXT=0`（原文）/`TYPE_KEY=1`（大写规范化键名，如 `CTRL`）/`TYPE_DELAY=2`（毫秒数，范围 1-5000）。
 - `QuickSendConverters`：`List<ContentSegment>` ↔ JSON 字符串（`kotlinx.serialization`）。
 - `QuickSendDao`：主查询 `allEntries()` 全量、按 `useCount DESC, updatedAt DESC` 排序；`incrementUseCount`/`updateUseCount` 维护计数；`count()` 用于 500 上限校验。
 - `QuickSendManager`（`object`，自带 `CoroutineScope`）：`init(context)` 建库；暴露 `items: StateFlow<List<QuickSendEntry>>`；所有写操作后 `reload()`。`add()` 超 500 条返回 false。
@@ -72,9 +72,9 @@ bindService(.plugin.SERVICE, perm.PLUGIN) ──▶ MainService.onBind()
 ```
 QuickSendEntry.segments
    └─▶ SendActionBuilder.build(segments, sendMode)   // 纯算法，不发送
-          COMBINATION: 连续 modifier(type1) 合修饰键列表 → 首个非 modifier(type1) 作主键
-                       → 修饰键就位时单字符 type0 也提升为主键([CTRL]c→Ctrl+C) → 其余 type0 合 Text
-          SEQUENCE:    type1→KeyPress ; type0→逐字符 Text
+          COMBINATION: 连续 modifier(type1) 与紧接主键合为组合键；单字符 type0 可作主键([CTRL]c→Ctrl+C)
+                       → 其余 type0/type1/type2 段保持顺序
+          SEQUENCE:    type1→KeyPress ; type0→整段 Text；type2→Delay
           ▼ List<SendAction>
    └─▶ QuickSendExecutor.execute(entry, service?)
           KeyCombination → remote.sendKeyCombination(...)

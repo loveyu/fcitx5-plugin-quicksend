@@ -15,6 +15,9 @@ sealed class SendAction {
 
     /** 提交一段文本。 */
     data class Text(val text: String) : SendAction()
+
+    /** 暂停指定时间，不向目标应用发送任何内容。 */
+    data class Delay(val millis: Long) : SendAction()
 }
 
 /**
@@ -31,55 +34,51 @@ object SendActionBuilder {
     }
 
     /**
-     * COMBINATION 模式：
-     * - 连续 modifier type=1 段合为修饰键列表
-     * - 首个非 modifier type=1 段作主键
-     * - 已有修饰键时，首个“单字符” type=0 段也提升为主键（如 `[CTRL]c` → Ctrl+C），
-     *   否则该字符会被当成普通文本提交、修饰键沦为裸按一次，组合键不成立
-     * - 后续 type=1 段回退为单个 KeyPress
-     * - 其余 type=0 段合并为一个 Text（放在最后）
+     * COMBINATION 模式（组合键序列）：
+     * - 每组连续 modifier type=1 段与紧接的一个主键合为组合键
+     * - 单字符文本也可作为组合键主键，兼容已有的 `[CTRL]c` 条目
+     * - 其余内容严格保持原有顺序；延迟段会切断修饰键组
      */
     fun buildCombination(segments: List<ContentSegment>): List<SendAction> {
-        val trailingKeyPresses = mutableListOf<SendAction>()
-        val modifiers = mutableListOf<Int>()
-        var mainKey: Int? = null
-        val textBuilder = StringBuilder()
-
-        for (seg in segments) {
-            when {
-                seg.type == ContentSegment.TYPE_KEY -> {
-                    val code = KeyNameMapping.keyCodeOf(seg.content) ?: continue // 不在映射表，跳过
-                    when {
-                        mainKey == null && KeyNameMapping.isModifier(seg.content) -> modifiers.add(code)
-                        mainKey == null -> mainKey = code
-                        else -> trailingKeyPresses.add(SendAction.KeyPress(code))
-                    }
-                }
-                seg.type == ContentSegment.TYPE_TEXT -> {
-                    // 修饰键已就位、尚无主键、且是单个可映射字符 → 提升为主键，避免组合键被拆散
-                    if (mainKey == null && modifiers.isNotEmpty() && seg.content.length == 1) {
-                        val promoted = KeyNameMapping.keyCodeOfChar(seg.content[0])
-                        if (promoted != null) {
-                            mainKey = promoted
-                            continue
-                        }
-                    }
-                    textBuilder.append(seg.content)
-                }
-            }
-        }
-
         val actions = mutableListOf<SendAction>()
-        when {
-            mainKey != null -> actions.add(SendAction.KeyCombination(modifiers.toList(), mainKey))
-            modifiers.isNotEmpty() -> {
-                // 仅有修饰键、无主键：每个修饰键单独按下（回退）
-                modifiers.forEach { actions.add(SendAction.KeyPress(it)) }
+        var index = 0
+        while (index < segments.size) {
+            val segment = segments[index]
+            if (segment.type == ContentSegment.TYPE_KEY && KeyNameMapping.isModifier(segment.content)) {
+                val modifiers = mutableListOf<Int>()
+                while (index < segments.size) {
+                    val modifier = segments[index]
+                    val code = KeyNameMapping.keyCodeOf(modifier.content)
+                    if (modifier.type != ContentSegment.TYPE_KEY || code == null || !KeyNameMapping.isModifier(modifier.content)) break
+                    modifiers += code
+                    index++
+                }
+                val main = segments.getOrNull(index)
+                val mainKey = when {
+                    main?.type == ContentSegment.TYPE_KEY -> KeyNameMapping.keyCodeOf(main.content)
+                        ?.takeUnless { KeyNameMapping.isModifier(main.content) }
+                    main?.type == ContentSegment.TYPE_TEXT && main.content.length == 1 ->
+                        KeyNameMapping.keyCodeOfChar(main.content[0])
+                    else -> null
+                }
+                if (mainKey != null) {
+                    actions += SendAction.KeyCombination(modifiers, mainKey)
+                    index++
+                } else {
+                    // 只有修饰键时无法组成组合键，保持兼容地逐个发送。
+                    modifiers.forEach { actions += SendAction.KeyPress(it) }
+                }
+                continue
             }
-        }
-        actions.addAll(trailingKeyPresses)
-        if (textBuilder.isNotEmpty()) {
-            actions.add(SendAction.Text(textBuilder.toString()))
+
+            when (segment.type) {
+                ContentSegment.TYPE_TEXT -> actions += SendAction.Text(segment.content)
+                ContentSegment.TYPE_KEY -> KeyNameMapping.keyCodeOf(segment.content)
+                    ?.let { actions += SendAction.KeyPress(it) }
+                ContentSegment.TYPE_DELAY -> ContentSegment.delayMillis(segment.content)
+                    ?.let { actions += SendAction.Delay(it) }
+            }
+            index++
         }
         return actions
     }
@@ -87,19 +86,22 @@ object SendActionBuilder {
     /**
      * SEQUENCE 模式：
      * - type=1 段：单个 KeyPress（down + up）
-     * - type=0 段：逐字符拆为 Text
+     * - type=0 段：整段 Text
+     * - type=2 段：Delay
      */
     fun buildSequence(segments: List<ContentSegment>): List<SendAction> {
         val actions = mutableListOf<SendAction>()
         for (seg in segments) {
             when (seg.type) {
                 ContentSegment.TYPE_TEXT -> {
-                    seg.content.forEach { ch -> actions.add(SendAction.Text(ch.toString())) }
+                    actions.add(SendAction.Text(seg.content))
                 }
                 ContentSegment.TYPE_KEY -> {
                     KeyNameMapping.keyCodeOf(seg.content)
                         ?.let { actions.add(SendAction.KeyPress(it)) }
                 }
+                ContentSegment.TYPE_DELAY -> ContentSegment.delayMillis(seg.content)
+                    ?.let { actions.add(SendAction.Delay(it)) }
             }
         }
         return actions
